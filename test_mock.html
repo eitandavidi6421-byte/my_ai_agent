@@ -1,0 +1,38 @@
+S<!DOCTYPE html>
+<html>
+<head>
+    <title>Mock Test Page</title>
+</head>
+<body>
+    <main>
+        <h1>Welcome to the Swarm Test</h1>
+        <p>This is a paragraph with some content to read.</p>
+        
+        <div id="interactive">
+            <button id="btn1">Action Button</button>
+            <a href="https://example.com" id="link1">Example Link</a>
+            <input type="text" placeholder="Entry field" id="input1">
+            
+            <div id="shadow-host"></div>
+        </div>
+
+        <div style="display: none;">
+            <button id="hidden-btn">Hidden</button>
+        </div>
+
+        <footer>
+            <p>Footer content should be ignored in some modes.</p>
+        </footer>
+    </main>
+
+    <script>
+        // Create Shadow DOM
+        const host = document.getElementById('shadow-host');
+        const shadow = host.attachShadow({mode: 'open'});
+        shadow.innerHTML = `
+            <button id="shadow-btn">Shadow Button</button>
+            <input type="checkbox" id="shadow-check" aria-label="Shadow Check">
+        `;
+    </script>
+</body>
+</html>

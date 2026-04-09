@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "AI Agent Pro",
+  "version": "4.1",
+  "description": "סוכן חכם המשתמש בזהות גוגל מאובטחת",
+  "action": {
+    "default_title": "פתח AI Agent"
+  },
+  "side_panel": {
+    "default_path": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content-agent.js"
+      ]
+    }
+  ],
+  "permissions": [
+    "sidePanel",
+    "tabs",
+    "activeTab",
+    "scripting",
+    "storage",
+    "identity",
+    "alarms"
+  ],
+  "oauth2": {
+    "client_id": "314318215563-73ircvr0kghr4hv2va6sged94m260bor.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile",
+      "openid",
+      "https://www.googleapis.com/auth/generative-language.retriever"
+    ]
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://generativelanguage.googleapis.com https://www.googleapis.com;"
+  },
+  "host_permissions": [
+    "<all_urls>"
+  ]
+}
