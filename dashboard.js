@@ -52,6 +52,16 @@ themeToggle.addEventListener('click', () => {
     chrome.storage.local.set({ theme: next });
 });
 
+// UI Logic for Research Mode Segmented Controls
+document.querySelectorAll('.res-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.res-btn').forEach(b => b.classList.remove('active'));
+        // If they click on the icon/text inside, we want the button
+        const targetBtn = e.target.closest('.res-btn');
+        if (targetBtn) targetBtn.classList.add('active');
+    });
+});
+
 modelSelect.addEventListener('change', (e) => {
     chrome.storage.local.set({ aiModel: e.target.value });
 });
@@ -127,6 +137,7 @@ function selectConversation(id, title) {
 
     closeCanvas(); // Automatically close Canvas when switching chats
     closeProjectPlan(); // Also close Project Plan when switching chats
+    syncProjectPlanToggle(); // Show/hide toggle button based on whether this conv has a plan
 
     // Load chat history for this conversation
     chrome.runtime.sendMessage({ action: 'load_conversation_history', id }, (resp) => {
@@ -209,12 +220,9 @@ function deleteConversation(id) {
 
 newChatBtn.addEventListener('click', () => {
     createConversation((id) => {
+        // selectConversation כבר טוען את הצ'אט ומציגה את הודעת הפתיחה דרך rebuildChatFromHistory
+        // אסור להוסיף אותה שוב כאן כדי למנוע הכפלה
         selectConversation(id, 'שיחה חדשה');
-        // Now automatically select and load empty
-        activeConvId = id;
-        convTitle.textContent = 'שיחה חדשה';
-        chatWindow.innerHTML = '';
-        addMessageUI('שלום! שגר סוכנים לחפש, לכתוב, לבדוק... 🚀', false);
     });
 });
 
@@ -550,6 +558,7 @@ function updatePillThinking(workerId, logs, status) {
     stepsEl.scrollTop = stepsEl.scrollHeight;
 }
 
+
 function toTitleCase(action) {
     const map = {
         open_url: 'פתיחת כתובת',
@@ -603,7 +612,16 @@ function doSend(text) {
     addMessageUI(text, true);
     addMessageUI('', false, true); // progress loader
 
-    chrome.runtime.sendMessage({ action: 'manager_prompt', text, conversationId: activeConvId }, (response) => {
+    const activeResBtn = document.querySelector('.res-btn.active');
+    const researchMode = activeResBtn ? activeResBtn.getAttribute('data-mode') : 'none';
+
+    const options = {
+        action: 'manager_prompt',
+        text,
+        conversationId: activeConvId,
+        researchMode
+    };
+    chrome.runtime.sendMessage(options, (response) => {
         if (activeConvId === originalConvId) {
             removeLoader();
         }
@@ -1004,51 +1022,210 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-// ══════════════ PROJECT PLAN LOGIC ══════════════
+// ══════════════ PROJECT PLAN LOGIC (Per-Conversation) ══════════════
 
+const projectToggleBtn = document.getElementById('project-plan-toggle');
+
+/**
+ * Open the project plan panel for the active conversation.
+ * If tasks are provided, saves them to storage. Otherwise loads from storage.
+ *
+ * @param {Array|null} tasks - Array of { text, status } or null to load from storage
+ */
 function openProjectPlan(tasks) {
+    if (!activeConvId) return;
+
+    // Close canvas if open
     document.getElementById('main-layout').classList.remove('canvas-open');
     document.getElementById('main-layout').classList.add('project-open');
 
+    // Update toggle button state
+    if (projectToggleBtn) projectToggleBtn.classList.add('active');
+
     const list = document.getElementById('project-tasks-list');
     if (!list) return;
-    list.innerHTML = '';
 
-    if (!tasks || !tasks.length) return;
+    // If tasks provided, save to storage and render
+    if (tasks && tasks.length) {
+        _saveProjectPlan(activeConvId, tasks);
+        _renderProjectTasks(list, tasks);
+    } else {
+        // Load from storage for the active conversation
+        _loadAndRenderProjectPlan(activeConvId, list);
+    }
+}
 
-    tasks.forEach(task => {
+/**
+ * Close the project plan panel.
+ */
+function closeProjectPlan() {
+    const layout = document.getElementById('main-layout');
+    if (layout) layout.classList.remove('project-open');
+    if (projectToggleBtn) projectToggleBtn.classList.remove('active');
+}
+
+/**
+ * Toggle the project plan panel open/closed.
+ */
+function toggleProjectPlan() {
+    const layout = document.getElementById('main-layout');
+    if (!layout) return;
+
+    if (layout.classList.contains('project-open')) {
+        closeProjectPlan();
+    } else {
+        openProjectPlan(null); // Load from storage
+    }
+}
+
+/**
+ * Save project plan tasks for a specific conversation.
+ * @private
+ */
+function _saveProjectPlan(convId, tasks) {
+    chrome.storage.local.get(['projectPlans'], (data) => {
+        const plans = data.projectPlans || {};
+        plans[convId] = tasks.map(t => ({
+            text: t.text || t,
+            status: t.status || 'pending',
+        }));
+        chrome.storage.local.set({ projectPlans: plans }, () => {
+            // Show toggle button immediately after saving
+            if (projectToggleBtn) projectToggleBtn.style.display = 'inline-flex';
+        });
+    });
+}
+
+/**
+ * Load and render project plan for a conversation.
+ * @private
+ */
+function _loadAndRenderProjectPlan(convId, listEl) {
+    chrome.storage.local.get(['projectPlans'], (data) => {
+        const plans = data.projectPlans || {};
+        const tasks = plans[convId];
+
+        if (!tasks || !tasks.length) {
+            listEl.innerHTML = `
+                <div style="padding:40px 24px;text-align:center;color:var(--text-dim);font-size:0.9rem;">
+                    <div style="font-size:2rem;margin-bottom:12px;">📋</div>
+                    אין תוכנית פרויקט לשיחה זו.<br>
+                    <span style="font-size:0.82rem;">שלח בקשה מורכבת והמערכת תיצור תוכנית אוטומטית.</span>
+                </div>`;
+            return;
+        }
+
+        _renderProjectTasks(listEl, tasks);
+    });
+}
+
+/**
+ * Render project tasks into the list element.
+ * @private
+ */
+function _renderProjectTasks(listEl, tasks) {
+    listEl.innerHTML = '';
+
+    tasks.forEach((task, index) => {
+        const taskText = typeof task === 'string' ? task : (task.text || '');
+        const taskStatus = typeof task === 'object' ? (task.status || 'pending') : 'pending';
+
         const item = document.createElement('div');
-        item.className = 'task-item' + (task.status === 'done' ? ' status-done' : '');
+        item.className = 'task-item' + (taskStatus === 'done' ? ' status-done' : '');
 
         const checkbox = document.createElement('div');
         checkbox.className = 'task-checkbox';
         checkbox.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
 
+        const textEl = document.createElement('div');
+        textEl.className = 'task-text';
+        textEl.contentEditable = true;
+        textEl.textContent = taskText;
+
         checkbox.addEventListener('click', () => {
             const isDone = item.classList.toggle('status-done');
 
+            // Update storage
+            _updateTaskStatus(activeConvId, index, isDone ? 'done' : 'pending');
+
             // Send automatic message to AI to continue
-            const actionText = isDone ? `✅ סיימתי את השלב "${textEl.innerText.trim()}". בוא נמשיך לשלב הבא.` : `❌ השלב "${textEl.innerText.trim()}" עדיין לא הושלם. עדכן סטטוס.`;
+            const actionText = isDone
+                ? `✅ סיימתי את השלב "${textEl.innerText.trim()}". בוא נמשיך לשלב הבא.`
+                : `❌ השלב "${textEl.innerText.trim()}" עדיין לא הושלם. עדכן סטטוס.`;
             inputField.value = actionText;
             handleSend();
         });
 
-        const textEl = document.createElement('div');
-        textEl.className = 'task-text';
-        textEl.contentEditable = true;
-        textEl.textContent = task.text;
+        // Save text edits on blur
+        textEl.addEventListener('blur', () => {
+            _updateTaskText(activeConvId, index, textEl.innerText.trim());
+        });
 
         item.appendChild(checkbox);
         item.appendChild(textEl);
-        list.appendChild(item);
+        listEl.appendChild(item);
     });
 }
 
-function closeProjectPlan() {
-    const layout = document.getElementById('main-layout');
-    if (layout) layout.classList.remove('project-open');
+/**
+ * Update a single task's status in storage.
+ * @private
+ */
+function _updateTaskStatus(convId, taskIndex, newStatus) {
+    chrome.storage.local.get(['projectPlans'], (data) => {
+        const plans = data.projectPlans || {};
+        if (plans[convId] && plans[convId][taskIndex]) {
+            plans[convId][taskIndex].status = newStatus;
+            chrome.storage.local.set({ projectPlans: plans });
+        }
+    });
 }
 
+/**
+ * Update a single task's text in storage (after user edits it).
+ * @private
+ */
+function _updateTaskText(convId, taskIndex, newText) {
+    chrome.storage.local.get(['projectPlans'], (data) => {
+        const plans = data.projectPlans || {};
+        if (plans[convId] && plans[convId][taskIndex]) {
+            plans[convId][taskIndex].text = newText;
+            chrome.storage.local.set({ projectPlans: plans });
+        }
+    });
+}
+
+/**
+ * Sync the project plan toggle button visibility when switching conversations.
+ * Called whenever activeConvId changes.
+ */
+function syncProjectPlanToggle() {
+    if (!projectToggleBtn) return;
+
+    if (!activeConvId) {
+        projectToggleBtn.style.display = 'none';
+        closeProjectPlan();
+        return;
+    }
+
+    chrome.storage.local.get(['projectPlans'], (data) => {
+        const plans = data.projectPlans || {};
+        const hasPlan = plans[activeConvId] && plans[activeConvId].length > 0;
+        projectToggleBtn.style.display = hasPlan ? 'inline-flex' : 'none';
+
+        // If panel is open but this conv has no plan, close it
+        if (!hasPlan) {
+            closeProjectPlan();
+        }
+    });
+}
+
+// Toggle button click handler
+if (projectToggleBtn) {
+    projectToggleBtn.addEventListener('click', toggleProjectPlan);
+}
+
+// Close button in project panel
 document.getElementById('close-project')?.addEventListener('click', closeProjectPlan);
 
 // ══════════════ INIT & STORAGE SYNC ══════════════
@@ -1056,4 +1233,5 @@ document.getElementById('close-project')?.addEventListener('click', closeProject
 loadSidebar();
 
 chrome.storage.local.get(['activeWorkers'], (data) => renderWorkers(data.activeWorkers || {}));
+
 

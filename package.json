@@ -7,10 +7,12 @@
   "type": "commonjs",
   "main": "background.js",
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "format": "prettier --write ."
   },
   "devDependencies": {
     "jest": "^30.3.0",
-    "jest-environment-jsdom": "^30.3.0"
+    "jest-environment-jsdom": "^30.3.0",
+    "prettier": "^3.8.1"
   }
 }

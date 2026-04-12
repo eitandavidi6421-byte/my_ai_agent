@@ -107,6 +107,56 @@ const DOMUtils = {
 // ═══════════════════════════════════════════════════════════
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
+    // ═══════════════════════════════════════════════════════════
+    // SKILL INITIALIZATION & HEARTBEAT (Orchestrator Integration)
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * init_skill: Called by the SwarmOrchestrator after tab creation.
+     * Sets this agent's skill type and starts a heartbeat interval
+     * that prevents the orchestrator's watchdog from killing this tab.
+     *
+     * Message: { action: 'init_skill', skill: 'researcher', agentId: 'agent_xxx' }
+     */
+    if (request.action === 'init_skill') {
+        window.__agentSkill = request.skill;      // 'researcher' | 'action_writer' | 'google_manager'
+        window.__agentId = request.agentId;
+
+        // Clear previous heartbeat if re-initialized
+        if (window.__heartbeatInterval) {
+            clearInterval(window.__heartbeatInterval);
+        }
+
+        // Send heartbeat every 15s (well within 30-60s watchdog windows)
+        window.__heartbeatInterval = setInterval(() => {
+            try {
+                chrome.runtime.sendMessage({
+                    action: 'agent_heartbeat',
+                    agentId: window.__agentId,
+                });
+            } catch (e) {
+                // Extension context invalidated — stop heartbeat
+                clearInterval(window.__heartbeatInterval);
+            }
+        }, 15_000);
+
+        console.log(`[Content-Agent] Initialized with skill: ${request.skill}, id: ${request.agentId}`);
+        sendResponse({ success: true, skill: request.skill });
+        return true;
+    }
+
+    /**
+     * get_agent_info: Returns the current agent's skill and ID.
+     * Used by the dashboard to identify which agent is running in a tab.
+     */
+    if (request.action === 'get_agent_info') {
+        sendResponse({
+            skill: window.__agentSkill || null,
+            agentId: window.__agentId || null,
+        });
+        return true;
+    }
+
     if (request.action === "scroll") {
         window.scrollBy(0, request.amount || 800);
         sendResponse({ success: true });
