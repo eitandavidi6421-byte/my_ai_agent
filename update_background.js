@@ -1,8 +1,10 @@
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
-const filePath = path.join('c:/Users/IMOE001/Documents/הבינה המלכותית שלי/background.js');
-let content = fs.readFileSync(filePath, 'utf8');
+const filePath = path.join(
+  "c:/Users/IMOE001/Documents/הבינה המלכותית שלי/background.js",
+);
+let content = fs.readFileSync(filePath, "utf8");
 
 // 1. Add scriptAnalyzeEditor function
 const analyzeFunc = `
@@ -73,27 +75,36 @@ async function scriptAnalyzeEditor(tabId) {
 `;
 
 // Insert the function just before `async function scriptEditorFormat`
-if (!content.includes('scriptAnalyzeEditor')) {
-    content = content.replace('async function scriptEditorFormat', analyzeFunc + '\\nasync function scriptEditorFormat');
+if (!content.includes("scriptAnalyzeEditor")) {
+  content = content.replace(
+    "async function scriptEditorFormat",
+    analyzeFunc + "\\nasync function scriptEditorFormat",
+  );
 }
 
 // 2. Add action router in message listener
-const analyzeRouter = "} else if (action === 'analyze_editor' && tabId) {\\n" +
-"    const res = await scriptAnalyzeEditor(tabId);\\n" +
-"    feedback = res.ok ? 'הניתוח הושלם בהצלחה:\\n' + res.text : 'שגיאה בניתוח העורך:' + res.text;\\n";
+const analyzeRouter =
+  "} else if (action === 'analyze_editor' && tabId) {\\n" +
+  "    const res = await scriptAnalyzeEditor(tabId);\\n" +
+  "    feedback = res.ok ? 'הניתוח הושלם בהצלחה:\\n' + res.text : 'שגיאה בניתוח העורך:' + res.text;\\n";
 
 if (!content.includes("action === 'analyze_editor'")) {
-    content = content.replace(
-        "} else if (action === 'editor_format' && tabId && p.command) {",
-        analyzeRouter + "  } else if (action === 'editor_format' && tabId && p.command) {"
-    );
+  content = content.replace(
+    "} else if (action === 'editor_format' && tabId && p.command) {",
+    analyzeRouter +
+      "  } else if (action === 'editor_format' && tabId && p.command) {",
+  );
 }
 
 // 3. Update the prompt to include analyze_editor
-const promptAddition = "\\n| analyze_editor | {} - מנתח את אתר העריכה (WordPress/Notion/Docs) ומחזיר המלצות לפעולה ורשימת כפתורי עריכה קיימים בסרגל (Toolbar) |";
-if (!content.includes('| analyze_editor |')) {
-    content = content.replace(/\\| editor_format \\|/, promptAddition.trim() + '\\n  | editor_format |');
+const promptAddition =
+  "\\n| analyze_editor | {} - מנתח את אתר העריכה (WordPress/Notion/Docs) ומחזיר המלצות לפעולה ורשימת כפתורי עריכה קיימים בסרגל (Toolbar) |";
+if (!content.includes("| analyze_editor |")) {
+  content = content.replace(
+    /\\| editor_format \\|/,
+    promptAddition.trim() + "\\n  | editor_format |",
+  );
 }
 
-fs.writeFileSync(filePath, content, 'utf8');
-console.log('Update complete.');
+fs.writeFileSync(filePath, content, "utf8");
+console.log("Update complete.");

@@ -1,47 +1,66 @@
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
+const fs = require("fs");
+const vm = require("vm");
+const path = require("path");
 
-const code = fs.readFileSync(path.join(__dirname, './background.js'), 'utf8');
+const code = fs.readFileSync(path.join(__dirname, "./background.js"), "utf8");
 
 const logs = [];
 
 const sandbox = {
-    chrome: {
-        storage: { 
-            local: { 
-                get: async () => ({ loggedInEmail: 'test@test.com', convHistory: {}, conversations: [{id: 'default', title: 'שיחה חדשה'}] }), 
-                set: async () => {} 
-            } 
-        },
-        runtime: { 
-            onMessage: { addListener: () => {} },
-            sendMessage: async (msg) => { logs.push("UI MSG: " + JSON.stringify(msg)); }
-        },
-        tabs: { create: (opts, cb) => { logs.push("TAB CREATED"); cb({id: 1}); }, executeScript: () => {}, remove: async () => {}, get: async () => ({url:'https://a.com'}), update: async () => {} },
-        alarms: { create: () => {}, onAlarm: { addListener: () => {} } },
-        action: { onClicked: { addListener: () => {} } }
+  chrome: {
+    storage: {
+      local: {
+        get: async () => ({
+          loggedInEmail: "test@test.com",
+          convHistory: {},
+          conversations: [{ id: "default", title: "שיחה חדשה" }],
+        }),
+        set: async () => {},
+      },
     },
-    // Mock the external API
-    callGeminiAPI: async (prompt, messages) => {
-        logs.push("GEMINI CALLED WITH " + messages.length + " MESSAGES");
-        return JSON.stringify({
-            thought: "I will spawn a worker",
-            action: "spawn_worker",
-            parameters: { url: "https://example.com", task: "test" }
-        });
+    runtime: {
+      onMessage: { addListener: () => {} },
+      sendMessage: async (msg) => {
+        logs.push("UI MSG: " + JSON.stringify(msg));
+      },
     },
-    parseJSON: (x) => JSON.parse(x),
-    heartbeat: () => {},
-    console: { log: (...args) => logs.push("LOG: " + args.join(' ')), error: (...args) => logs.push("ERR: " + args.join(' ')) },
-    setTimeout: (cb) => cb(),
-    isRefusal: () => false
+    tabs: {
+      create: (opts, cb) => {
+        logs.push("TAB CREATED");
+        cb({ id: 1 });
+      },
+      executeScript: () => {},
+      remove: async () => {},
+      get: async () => ({ url: "https://a.com" }),
+      update: async () => {},
+    },
+    alarms: { create: () => {}, onAlarm: { addListener: () => {} } },
+    action: { onClicked: { addListener: () => {} } },
+  },
+  // Mock the external API
+  callGeminiAPI: async (prompt, messages) => {
+    logs.push("GEMINI CALLED WITH " + messages.length + " MESSAGES");
+    return JSON.stringify({
+      thought: "I will spawn a worker",
+      action: "spawn_worker",
+      parameters: { url: "https://example.com", task: "test" },
+    });
+  },
+  parseJSON: (x) => JSON.parse(x),
+  heartbeat: () => {},
+  console: {
+    log: (...args) => logs.push("LOG: " + args.join(" ")),
+    error: (...args) => logs.push("ERR: " + args.join(" ")),
+  },
+  setTimeout: (cb) => cb(),
+  isRefusal: () => false,
 };
 
 const context = vm.createContext(sandbox);
 
 // Provide a way to run orchestrator and track the response
-vm.runInContext(`
+vm.runInContext(
+  `
     ${code}
     
     // We overwrite the callGeminiAPI with our mock that loops 
@@ -63,8 +82,10 @@ vm.runInContext(`
     runManagerOrchestrator("Hello", "default", (res) => {
         console.log("FINAL RESPONSE:", JSON.stringify(res));
     }).catch(e => console.error(e));
-`, context);
+`,
+  context,
+);
 
 setTimeout(() => {
-    console.log(logs.join('\\n'));
+  console.log(logs.join("\\n"));
 }, 500);

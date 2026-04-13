@@ -42,9 +42,9 @@ chrome.runtime.onMessage  ← Message Hub (background.js)
 
 ```js
 // Prevents the service worker from being killed mid-loop (MV3 sleeps after ~30s idle)
-chrome.alarms.create('swarm_keepalive', { periodInMinutes: 0.4 });
+chrome.alarms.create("swarm_keepalive", { periodInMinutes: 0.4 });
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'swarm_keepalive') heartbeat();
+  if (alarm.name === "swarm_keepalive") heartbeat();
 });
 
 function heartbeat() {
@@ -63,11 +63,16 @@ function heartbeat() {
 
 ```js
 class AsyncMutex {
-  constructor() { this.queue = []; this.locked = false; }
+  constructor() {
+    this.queue = [];
+    this.locked = false;
+  }
   async lock() {
-    return new Promise(resolve => {
-      if (!this.locked) { this.locked = true; resolve(); }
-      else this.queue.push(resolve);
+    return new Promise((resolve) => {
+      if (!this.locked) {
+        this.locked = true;
+        resolve();
+      } else this.queue.push(resolve);
     });
   }
   unlock() {
@@ -79,14 +84,17 @@ const storageMutex = new AsyncMutex();
 ```
 
 **Always use the mutex for critical writes** (pause, done, error, delete):
+
 ```js
 await storageMutex.lock();
 try {
-  const { activeWorkers = {} } = await chrome.storage.local.get(['activeWorkers']);
+  const { activeWorkers = {} } = await chrome.storage.local.get([
+    "activeWorkers",
+  ]);
   // ... mutate ...
   await chrome.storage.local.set({ activeWorkers });
 } finally {
-  storageMutex.unlock();  // ALWAYS in finally block
+  storageMutex.unlock(); // ALWAYS in finally block
 }
 ```
 
@@ -114,13 +122,17 @@ function upd(workerId, patch) {
 
       await storageMutex.lock();
       try {
-        const { activeWorkers = {} } = await chrome.storage.local.get(['activeWorkers']);
+        const { activeWorkers = {} } = await chrome.storage.local.get([
+          "activeWorkers",
+        ]);
         for (const wid in updates) {
           if (!activeWorkers[wid]) activeWorkers[wid] = {};
           Object.assign(activeWorkers[wid], updates[wid]);
         }
         await chrome.storage.local.set({ activeWorkers });
-      } finally { storageMutex.unlock(); }
+      } finally {
+        storageMutex.unlock();
+      }
     }, 500);
   }
 }
@@ -130,11 +142,15 @@ function upd(workerId, patch) {
 async function updDirect(workerId, patch) {
   await storageMutex.lock();
   try {
-    const { activeWorkers = {} } = await chrome.storage.local.get(['activeWorkers']);
+    const { activeWorkers = {} } = await chrome.storage.local.get([
+      "activeWorkers",
+    ]);
     if (!activeWorkers[workerId]) return;
     Object.assign(activeWorkers[workerId], patch);
     await chrome.storage.local.set({ activeWorkers });
-  } finally { storageMutex.unlock(); }
+  } finally {
+    storageMutex.unlock();
+  }
 }
 ```
 
@@ -189,18 +205,20 @@ async function appendHistory(convId, role, text) {
 
 ```js
 // Spawn a worker — always use UUID, never reuse IDs
-const wid = 'agent_' + crypto.randomUUID();
+const wid = "agent_" + crypto.randomUUID();
 
-const { activeWorkers = {} } = await chrome.storage.local.get(['activeWorkers']);
+const { activeWorkers = {} } = await chrome.storage.local.get([
+  "activeWorkers",
+]);
 activeWorkers[wid] = {
   id: wid,
   url: targetUrl,
   task: taskDescription,
-  status: 'running',          // 'running' | 'paused' | 'done' | 'error' | 'cancelled'
+  status: "running", // 'running' | 'paused' | 'done' | 'error' | 'cancelled'
   logs: [],
   finalReport: null,
   spawnedAt: Date.now(),
-  conversationId: convId      // ← CRITICAL: prevents cross-conversation leakage
+  conversationId: convId, // ← CRITICAL: prevents cross-conversation leakage
 };
 await chrome.storage.local.set({ activeWorkers });
 
@@ -215,37 +233,53 @@ chrome.tabs.create({ url: targetUrl, active: false }, (tab) => {
 ## Gemini API Call Pattern
 
 ```js
-async function callGeminiAPI(systemPrompt, messages, retries = 3, delay = 2000) {
+async function callGeminiAPI(
+  systemPrompt,
+  messages,
+  retries = 3,
+  delay = 2000,
+) {
   const token = await getValidToken();
-  if (!token) throw new Error('Missing OAuth token');
+  if (!token) throw new Error("Missing OAuth token");
 
-  const { aiModel = 'gemini-2.0-flash' } = await chrome.storage.local.get(['aiModel']);
+  const { aiModel = "gemini-2.0-flash" } = await chrome.storage.local.get([
+    "aiModel",
+  ]);
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent`,
     {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemPrompt }] },
         contents: messages,
         generationConfig: {
-          responseMimeType: 'application/json',  // force JSON output
-          temperature: 0.7
+          responseMimeType: "application/json", // force JSON output
+          temperature: 0.7,
         },
         safetySettings: [
-          { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_HATE_SPEECH',       threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-        ]
-      })
-    }
+          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+          {
+            category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+            threshold: "BLOCK_NONE",
+          },
+          {
+            category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+            threshold: "BLOCK_NONE",
+          },
+        ],
+      }),
+    },
   );
 
   if (!response.ok) {
     if ([429, 500, 503].includes(response.status) && retries > 0) {
-      await new Promise(r => setTimeout(r, delay));
+      await new Promise((r) => setTimeout(r, delay));
       return callGeminiAPI(systemPrompt, messages, retries - 1, delay * 2);
     }
     throw new Error(`Gemini ${response.status}`);
@@ -253,18 +287,19 @@ async function callGeminiAPI(systemPrompt, messages, retries = 3, delay = 2000) 
 
   const data = await response.json();
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Empty Gemini response');
+  if (!text) throw new Error("Empty Gemini response");
   return text;
 }
 ```
 
 ### Gemini Message Format
+
 ```js
 // messages array passed to Gemini:
 const messages = [
-  { role: 'user',  parts: [{ text: 'User turn text' }] },
-  { role: 'model', parts: [{ text: '{"action":"..."}' }] },
-  { role: 'user',  parts: [{ text: 'Tool result feedback' }] },
+  { role: "user", parts: [{ text: "User turn text" }] },
+  { role: "model", parts: [{ text: '{"action":"..."}' }] },
+  { role: "user", parts: [{ text: "Tool result feedback" }] },
   // ...append and repeat
 ];
 ```
@@ -273,10 +308,15 @@ const messages = [
 
 ## JSON Response Parser (robust)
 
-```js
+````js
 function parseJSON(raw) {
   try {
-    return JSON.parse(raw.replace(/```json/gi, '').replace(/```/g, '').trim());
+    return JSON.parse(
+      raw
+        .replace(/```json/gi, "")
+        .replace(/```/g, "")
+        .trim(),
+    );
   } catch {
     try {
       const match = raw.match(/\{[\s\S]*\}/);
@@ -285,7 +325,7 @@ function parseJSON(raw) {
     return null;
   }
 }
-```
+````
 
 ---
 
@@ -296,9 +336,11 @@ function parseJSON(raw) {
 async function scriptReadPage(tabId) {
   const [res] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: () => { /* READ_PAGE_FUNC inline */ }
+    func: () => {
+      /* READ_PAGE_FUNC inline */
+    },
   });
-  return res?.result || '(empty)';
+  return res?.result || "(empty)";
 }
 
 // Interact with an element by its data-ai-id
@@ -310,19 +352,19 @@ async function scriptInteract(tabId, id, typeText = null, pressEnter = false) {
       if (!el) return { ok: false, msg: `ID ${elId} not found` };
       // ... interact logic
     },
-    args: [String(id), typeText, pressEnter]
+    args: [String(id), typeText, pressEnter],
   });
   return res?.result || { ok: false };
 }
 
 // Wait for tab navigation to complete
 async function waitForTab(tabId, timeout = 12000) {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const deadline = Date.now() + timeout;
     const poll = () => {
-      chrome.tabs.get(tabId, tab => {
+      chrome.tabs.get(tabId, (tab) => {
         if (chrome.runtime.lastError) return resolve(false);
-        if (tab.status === 'complete') return resolve(true);
+        if (tab.status === "complete") return resolve(true);
         if (Date.now() > deadline) return resolve(false);
         setTimeout(poll, 300);
       });
@@ -342,72 +384,96 @@ async function runSwarmWorkerLoop(workerId, tabId, task, convId) {
   const MAX_STEPS = 20;
 
   for (let step = 0; step < MAX_STEPS; step++) {
-    heartbeat();  // ← reset MV3 idle timer every iteration
+    heartbeat(); // ← reset MV3 idle timer every iteration
 
     // Check cancellation
-    const { activeWorkers = {} } = await chrome.storage.local.get(['activeWorkers']);
+    const { activeWorkers = {} } = await chrome.storage.local.get([
+      "activeWorkers",
+    ]);
     const w = activeWorkers[workerId];
-    if (!w || ['cancelled', 'error'].includes(w.status)) break;
+    if (!w || ["cancelled", "error"].includes(w.status)) break;
 
     // Call Gemini
     let raw;
     try {
       raw = await callGeminiAPI(WORKER_SYSTEM_PROMPT, history);
     } catch (e) {
-      await updDirect(workerId, { status: 'error', errorMsg: e.message });
+      await updDirect(workerId, { status: "error", errorMsg: e.message });
       break;
     }
 
     // Parse action
     const parsed = parseJSON(raw);
-    history.push({ role: 'model', parts: [{ text: raw }] });
+    history.push({ role: "model", parts: [{ text: raw }] });
 
     if (!parsed) {
-      history.push({ role: 'user', parts: [{ text: '⚠️ Invalid JSON. Retry with valid JSON.' }] });
+      history.push({
+        role: "user",
+        parts: [{ text: "⚠️ Invalid JSON. Retry with valid JSON." }],
+      });
       continue;
     }
 
     const { action, parameters, thought } = parsed;
     upd(workerId, { logs: [...(w.logs || []), { action, thought, step }] });
 
-    if (action === 'done') {
-      await updDirect(workerId, { status: 'done', finalReport: parameters?.text });
+    if (action === "done") {
+      await updDirect(workerId, {
+        status: "done",
+        finalReport: parameters?.text,
+      });
       chrome.tabs.remove(tabId).catch(() => {});
       return parameters?.text;
     }
 
-    if (action === 'open_url') {
+    if (action === "open_url") {
       await chrome.tabs.update(tabId, { url: parameters.url });
       await waitForTab(tabId);
       const pageContent = await scriptReadPage(tabId);
-      history.push({ role: 'user', parts: [{ text: `✅ Opened: ${parameters.url}\n\n${pageContent}` }] });
+      history.push({
+        role: "user",
+        parts: [{ text: `✅ Opened: ${parameters.url}\n\n${pageContent}` }],
+      });
       upd(workerId, { url: parameters.url });
       continue;
     }
 
-    if (action === 'click_element') {
+    if (action === "click_element") {
       const result = await scriptInteract(tabId, parameters.id);
       await waitForTab(tabId);
       const pageContent = await scriptReadPage(tabId);
-      history.push({ role: 'user', parts: [{ text: `${result.ok ? '✅' : '❌'} ${result.msg}\n\n${pageContent}` }] });
+      history.push({
+        role: "user",
+        parts: [
+          {
+            text: `${result.ok ? "✅" : "❌"} ${result.msg}\n\n${pageContent}`,
+          },
+        ],
+      });
       continue;
     }
 
-    if (action === 'read_page') {
+    if (action === "read_page") {
       const pageContent = await scriptReadPage(tabId);
-      history.push({ role: 'user', parts: [{ text: pageContent }] });
+      history.push({ role: "user", parts: [{ text: pageContent }] });
       continue;
     }
 
-    if (action === 'pause') {
-      await updDirect(workerId, { status: 'paused', errorMsg: parameters?.message });
+    if (action === "pause") {
+      await updDirect(workerId, {
+        status: "paused",
+        errorMsg: parameters?.message,
+      });
       // Loop pauses here — resume_worker message will call resumeSwarmWorker()
       return;
     }
   }
 
   // Max steps exceeded
-  await updDirect(workerId, { status: 'error', errorMsg: 'Max steps exceeded' });
+  await updDirect(workerId, {
+    status: "error",
+    errorMsg: "Max steps exceeded",
+  });
 }
 ```
 
@@ -417,11 +483,11 @@ async function runSwarmWorkerLoop(workerId, tabId, task, convId) {
 
 ```js
 // Store the resolve function so it can be called externally
-const pausedWorkers = {};  // in-memory during SW lifetime
+const pausedWorkers = {}; // in-memory during SW lifetime
 
 async function pauseWorker(workerId, message) {
-  await updDirect(workerId, { status: 'paused', errorMsg: message });
-  return new Promise(resolve => {
+  await updDirect(workerId, { status: "paused", errorMsg: message });
+  return new Promise((resolve) => {
     pausedWorkers[workerId] = resolve;
   });
 }
@@ -440,25 +506,25 @@ function resumeSwarmWorker(workerId, humanMessage) {
 
 ## Message Hub: Critical Actions
 
-| Action | Storage Access | sendResponse? |
-|---|---|---|
-| `manager_prompt` | convHistory read/write | Yes (async) |
-| `new_conversation` | conversations + convHistory | Yes |
-| `delete_conversation` | all three keys + mutex | Yes |
-| `stop_worker` | activeWorkers + mutex | Yes |
-| `resume_worker` | none (in-memory resolve) | Yes (immediate) |
-| `clear_workers` | clears pendingUpdates + activeWorkers | Yes |
+| Action                | Storage Access                        | sendResponse?   |
+| --------------------- | ------------------------------------- | --------------- |
+| `manager_prompt`      | convHistory read/write                | Yes (async)     |
+| `new_conversation`    | conversations + convHistory           | Yes             |
+| `delete_conversation` | all three keys + mutex                | Yes             |
+| `stop_worker`         | activeWorkers + mutex                 | Yes             |
+| `resume_worker`       | none (in-memory resolve)              | Yes (immediate) |
+| `clear_workers`       | clears pendingUpdates + activeWorkers | Yes             |
 
 ---
 
 ## Common Bugs & Fixes
 
-| Bug | Root Cause | Fix |
-|---|---|---|
-| Worker freezes mid-loop | MV3 SW killed by idle timeout | Add `heartbeat()` inside every loop iteration |
-| Workers appear in wrong conversation | Missing `conversationId` field | Always set `conversationId` on worker registration |
-| Storage write race condition | Parallel `get` → mutate → `set` | Wrap with `storageMutex` |
-| Stale `done` status replaced by batched write | `upd()` used for terminal states | Use `updDirect()` for `done/error/paused` |
-| `clear_workers` doesn't remove all workers | `pendingWorkerUpdates` still in memory | Always clear `pendingWorkerUpdates` before `clear_workers` storage write |
-| Gemini returns non-JSON text | Model occasionally ignores `responseMimeType` | Use `parseJSON()` with regex fallback, never `JSON.parse()` raw |
-| Tab navigates before read completes | `scriptReadPage` called before `status === complete` | Always `await waitForTab(tabId)` after navigation |
+| Bug                                           | Root Cause                                           | Fix                                                                      |
+| --------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------ |
+| Worker freezes mid-loop                       | MV3 SW killed by idle timeout                        | Add `heartbeat()` inside every loop iteration                            |
+| Workers appear in wrong conversation          | Missing `conversationId` field                       | Always set `conversationId` on worker registration                       |
+| Storage write race condition                  | Parallel `get` → mutate → `set`                      | Wrap with `storageMutex`                                                 |
+| Stale `done` status replaced by batched write | `upd()` used for terminal states                     | Use `updDirect()` for `done/error/paused`                                |
+| `clear_workers` doesn't remove all workers    | `pendingWorkerUpdates` still in memory               | Always clear `pendingWorkerUpdates` before `clear_workers` storage write |
+| Gemini returns non-JSON text                  | Model occasionally ignores `responseMimeType`        | Use `parseJSON()` with regex fallback, never `JSON.parse()` raw          |
+| Tab navigates before read completes           | `scriptReadPage` called before `status === complete` | Always `await waitForTab(tabId)` after navigation                        |

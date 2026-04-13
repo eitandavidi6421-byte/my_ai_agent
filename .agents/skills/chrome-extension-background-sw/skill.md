@@ -13,7 +13,7 @@ description: >
 # Chrome Extension – Background Service Worker Skill
 
 > **Manifest Version**: These patterns apply to **Manifest V3** (MV3).
-> MV3 replaced persistent background pages with ephemeral *service workers*.
+> MV3 replaced persistent background pages with ephemeral _service workers_.
 > The service worker can be terminated at any time — do NOT rely on in-memory global variables
 > for long-lived state. Use `chrome.storage` instead.
 
@@ -21,13 +21,13 @@ description: >
 
 ## Critical Gotchas (MV3)
 
-| Issue | Wrong | Correct |
-|---|---|---|
-| Persistent state | `let globalData = {}` | `chrome.storage.local.set({...})` |
-| Awaiting after async gap | Unhandled promise in message listener | Always return `true` from `onMessage` for async replies |
-| `fetch` in background | Works, but can fail if SW is terminated mid-flight | Use `keepalive: true` or alarms to re-trigger |
-| DOM APIs | `document`, `window`, `localStorage` — **NOT available** | Use `chrome.storage`, `self`, `indexedDB` |
-| `console.log` debugging | Logs appear in the *service worker* DevTools, not popup | Open `chrome://extensions` → "service worker" inspect link |
+| Issue                    | Wrong                                                    | Correct                                                    |
+| ------------------------ | -------------------------------------------------------- | ---------------------------------------------------------- |
+| Persistent state         | `let globalData = {}`                                    | `chrome.storage.local.set({...})`                          |
+| Awaiting after async gap | Unhandled promise in message listener                    | Always return `true` from `onMessage` for async replies    |
+| `fetch` in background    | Works, but can fail if SW is terminated mid-flight       | Use `keepalive: true` or alarms to re-trigger              |
+| DOM APIs                 | `document`, `window`, `localStorage` — **NOT available** | Use `chrome.storage`, `self`, `indexedDB`                  |
+| `console.log` debugging  | Logs appear in the _service worker_ DevTools, not popup  | Open `chrome://extensions` → "service worker" inspect link |
 
 ---
 
@@ -72,16 +72,21 @@ description: >
 
 ```js
 // popup.js
-const response = await chrome.runtime.sendMessage({ action: 'doSomething', data: 'payload' });
+const response = await chrome.runtime.sendMessage({
+  action: "doSomething",
+  data: "payload",
+});
 console.log(response); // { success: true, result: ... }
 ```
 
 ```js
 // background.js
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'doSomething') {
+  if (message.action === "doSomething") {
     // For async work, MUST return true to keep the channel open
-    handleAsync(message.data).then(result => sendResponse({ success: true, result }));
+    handleAsync(message.data).then((result) =>
+      sendResponse({ success: true, result }),
+    );
     return true; // ← CRITICAL for async sendResponse
   }
 });
@@ -92,13 +97,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 ```js
 // background.js
 const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-const response = await chrome.tabs.sendMessage(tab.id, { action: 'doInPage', selector: '#btn' });
+const response = await chrome.tabs.sendMessage(tab.id, {
+  action: "doInPage",
+  selector: "#btn",
+});
 ```
 
 ```js
 // content-agent.js
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'doInPage') {
+  if (message.action === "doInPage") {
     const el = document.querySelector(message.selector);
     el?.click();
     sendResponse({ clicked: !!el });
@@ -110,7 +118,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 ```js
 // content-agent.js
-const result = await chrome.runtime.sendMessage({ action: 'fetchData', url: 'https://api.example.com' });
+const result = await chrome.runtime.sendMessage({
+  action: "fetchData",
+  url: "https://api.example.com",
+});
 ```
 
 ---
@@ -155,24 +166,27 @@ chrome.storage.onChanged.addListener((changes, area) => {
 const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
 // Open a new tab
-const newTab = await chrome.tabs.create({ url: 'https://example.com', active: false });
+const newTab = await chrome.tabs.create({
+  url: "https://example.com",
+  active: false,
+});
 
 // Inject a content script programmatically (requires "scripting" permission)
 await chrome.scripting.executeScript({
   target: { tabId: tab.id },
-  files: ['content-agent.js']
+  files: ["content-agent.js"],
 });
 
 // Inject inline code
 await chrome.scripting.executeScript({
   target: { tabId: tab.id },
   func: (selector) => document.querySelector(selector)?.click(),
-  args: ['#submit-btn']
+  args: ["#submit-btn"],
 });
 
 // Wait for a tab to finish loading
 chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-  if (tabId === newTab.id && info.status === 'complete') {
+  if (tabId === newTab.id && info.status === "complete") {
     chrome.tabs.onUpdated.removeListener(listener);
     // proceed
   }
@@ -185,16 +199,16 @@ chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
 
 ```js
 // background.js – create an alarm
-chrome.alarms.create('poll-api', { periodInMinutes: 1 });
+chrome.alarms.create("poll-api", { periodInMinutes: 1 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'poll-api') {
+  if (alarm.name === "poll-api") {
     pollRemoteApi();
   }
 });
 
 // Clear an alarm
-chrome.alarms.clear('poll-api');
+chrome.alarms.clear("poll-api");
 ```
 
 > **`setInterval` and `setTimeout`** still work but will be cancelled when the service worker
@@ -209,18 +223,18 @@ chrome.alarms.clear('poll-api');
 
 // Runs once when the extension is installed or updated
 chrome.runtime.onInstalled.addListener(({ reason }) => {
-  if (reason === 'install') {
+  if (reason === "install") {
     // First-time setup: write defaults to storage
-    chrome.storage.local.set({ agentState: 'idle', workers: {} });
+    chrome.storage.local.set({ agentState: "idle", workers: {} });
   }
-  if (reason === 'update') {
+  if (reason === "update") {
     // Migration logic if needed
   }
 });
 
 // Fires when the extension starts (e.g., browser launch or after SW killed/restarted)
 chrome.runtime.onStartup.addListener(() => {
-  console.log('Extension started');
+  console.log("Extension started");
 });
 ```
 
@@ -232,15 +246,18 @@ chrome.runtime.onStartup.addListener(() => {
 // background.js – create menus on install
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
-    id: 'run-agent',
-    title: 'Run Agent on This Page',
-    contexts: ['page', 'selection']
+    id: "run-agent",
+    title: "Run Agent on This Page",
+    contexts: ["page", "selection"],
   });
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === 'run-agent') {
-    chrome.tabs.sendMessage(tab.id, { action: 'startAgent', selectedText: info.selectionText });
+  if (info.menuItemId === "run-agent") {
+    chrome.tabs.sendMessage(tab.id, {
+      action: "startAgent",
+      selectedText: info.selectionText,
+    });
   }
 });
 ```
@@ -259,26 +276,31 @@ function generateWorkerId() {
 
 // Register a new worker atomically
 async function registerWorker(workerId, task) {
-  const { workers = {} } = await chrome.storage.local.get('workers');
-  workers[workerId] = { task, status: 'pending', createdAt: Date.now() };
+  const { workers = {} } = await chrome.storage.local.get("workers");
+  workers[workerId] = { task, status: "pending", createdAt: Date.now() };
   await chrome.storage.local.set({ workers });
 }
 
 // Update worker status atomically (prevents race conditions)
 async function updateWorkerStatus(workerId, status, result = null) {
-  const { workers = {} } = await chrome.storage.local.get('workers');
+  const { workers = {} } = await chrome.storage.local.get("workers");
   if (workers[workerId]) {
-    workers[workerId] = { ...workers[workerId], status, result, updatedAt: Date.now() };
+    workers[workerId] = {
+      ...workers[workerId],
+      status,
+      result,
+      updatedAt: Date.now(),
+    };
     await chrome.storage.local.set({ workers });
   }
 }
 
 // Clean up finished workers older than 1 hour
 async function pruneWorkers() {
-  const { workers = {} } = await chrome.storage.local.get('workers');
+  const { workers = {} } = await chrome.storage.local.get("workers");
   const cutoff = Date.now() - 3600_000;
   for (const [id, w] of Object.entries(workers)) {
-    if (['done', 'error'].includes(w.status) && w.updatedAt < cutoff) {
+    if (["done", "error"].includes(w.status) && w.updatedAt < cutoff) {
       delete workers[id];
     }
   }

@@ -17,24 +17,24 @@
  * The dashboard can `chrome.runtime.onMessage.addListener` and switch on `action`.
  */
 export const Events = Object.freeze({
-    // ── Agent Lifecycle ──
-    AGENT_SPAWNED:       'agent_spawned',        // A new agent tab was opened
-    AGENT_HEARTBEAT:     'agent_heartbeat_ack',   // Heartbeat acknowledged (watchdog reset)
-    AGENT_LOG:           'agent_log',             // Single log entry from an agent
-    AGENT_STATUS_UPDATE: 'agent_status_update',   // Summary status change (running/paused/done/error)
-    AGENT_DONE:          'agent_done_report',      // Agent completed — includes final report
-    AGENT_ERROR:         'agent_error_report',     // Agent errored out
-    AGENT_TIMEOUT:       'agent_timeout',          // Watchdog fired — agent was killed
+  // ── Agent Lifecycle ──
+  AGENT_SPAWNED: "agent_spawned", // A new agent tab was opened
+  AGENT_HEARTBEAT: "agent_heartbeat_ack", // Heartbeat acknowledged (watchdog reset)
+  AGENT_LOG: "agent_log", // Single log entry from an agent
+  AGENT_STATUS_UPDATE: "agent_status_update", // Summary status change (running/paused/done/error)
+  AGENT_DONE: "agent_done_report", // Agent completed — includes final report
+  AGENT_ERROR: "agent_error_report", // Agent errored out
+  AGENT_TIMEOUT: "agent_timeout", // Watchdog fired — agent was killed
 
-    // ── Roadmap / Project ──
-    ROADMAP_CREATED:     'roadmap_created',        // A new roadmap was generated
-    ROADMAP_UPDATE:      'roadmap_update',         // Any change to roadmap state
-    ROADMAP_CHECKPOINT:  'roadmap_checkpoint',     // A step completed, waiting for user approval
-    ROADMAP_COMPLETED:   'roadmap_completed',      // All steps finished
+  // ── Roadmap / Project ──
+  ROADMAP_CREATED: "roadmap_created", // A new roadmap was generated
+  ROADMAP_UPDATE: "roadmap_update", // Any change to roadmap state
+  ROADMAP_CHECKPOINT: "roadmap_checkpoint", // A step completed, waiting for user approval
+  ROADMAP_COMPLETED: "roadmap_completed", // All steps finished
 
-    // ── Orchestrator-level ──
-    ORCHESTRATOR_BUSY:   'orchestrator_busy',      // Queue is being processed
-    ORCHESTRATOR_IDLE:   'orchestrator_idle',       // Queue empty, all agents done
+  // ── Orchestrator-level ──
+  ORCHESTRATOR_BUSY: "orchestrator_busy", // Queue is being processed
+  ORCHESTRATOR_IDLE: "orchestrator_idle", // Queue empty, all agents done
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -50,16 +50,16 @@ export const Events = Object.freeze({
  * @param {Object} data - Event payload (merged into the message)
  */
 export function broadcast(eventName, data = {}) {
-    const message = {
-        action: eventName,
-        timestamp: Date.now(),
-        ...data,
-    };
+  const message = {
+    action: eventName,
+    timestamp: Date.now(),
+    ...data,
+  };
 
-    // Fire-and-forget: dashboard may or may not be open
-    chrome.runtime.sendMessage(message).catch(() => {
-        // Silently ignore — no listeners means dashboard is closed
-    });
+  // Fire-and-forget: dashboard may or may not be open
+  chrome.runtime.sendMessage(message).catch(() => {
+    // Silently ignore — no listeners means dashboard is closed
+  });
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -76,7 +76,7 @@ export function broadcast(eventName, data = {}) {
  * @param {string} url - Target URL the agent was opened on
  */
 export function emitAgentSpawned(agentId, skill, task, url) {
-    broadcast(Events.AGENT_SPAWNED, { agentId, skill, task, url });
+  broadcast(Events.AGENT_SPAWNED, { agentId, skill, task, url });
 }
 
 /**
@@ -87,7 +87,7 @@ export function emitAgentSpawned(agentId, skill, task, url) {
  * @param {Object} entry - { thought, action, message, step }
  */
 export function emitAgentLog(agentId, entry) {
-    broadcast(Events.AGENT_LOG, { agentId, entry });
+  broadcast(Events.AGENT_LOG, { agentId, entry });
 }
 
 /**
@@ -97,8 +97,8 @@ export function emitAgentLog(agentId, entry) {
  * @param {string} status - 'running' | 'paused' | 'done' | 'error' | 'timeout'
  * @param {string} [summary] - Short summary text for the card
  */
-export function emitAgentStatus(agentId, status, summary = '') {
-    broadcast(Events.AGENT_STATUS_UPDATE, { agentId, status, summary });
+export function emitAgentStatus(agentId, status, summary = "") {
+  broadcast(Events.AGENT_STATUS_UPDATE, { agentId, status, summary });
 }
 
 /**
@@ -108,7 +108,7 @@ export function emitAgentStatus(agentId, status, summary = '') {
  * @param {string} report - Final report text
  */
 export function emitAgentDone(agentId, report) {
-    broadcast(Events.AGENT_DONE, { agentId, report });
+  broadcast(Events.AGENT_DONE, { agentId, report });
 }
 
 /**
@@ -118,7 +118,7 @@ export function emitAgentDone(agentId, report) {
  * @param {string} error - Error description
  */
 export function emitAgentError(agentId, error) {
-    broadcast(Events.AGENT_ERROR, { agentId, error });
+  broadcast(Events.AGENT_ERROR, { agentId, error });
 }
 
 /**
@@ -129,7 +129,7 @@ export function emitAgentError(agentId, error) {
  * @param {number} maxRetries - Maximum retries allowed
  */
 export function emitAgentTimeout(agentId, retryCount, maxRetries) {
-    broadcast(Events.AGENT_TIMEOUT, { agentId, retryCount, maxRetries });
+  broadcast(Events.AGENT_TIMEOUT, { agentId, retryCount, maxRetries });
 }
 
 /**
@@ -138,7 +138,7 @@ export function emitAgentTimeout(agentId, retryCount, maxRetries) {
  * @param {Object} roadmap - The full roadmap object from storage
  */
 export function emitRoadmapUpdate(roadmap) {
-    broadcast(Events.ROADMAP_UPDATE, { roadmap });
+  broadcast(Events.ROADMAP_UPDATE, { roadmap });
 }
 
 /**
@@ -148,5 +148,5 @@ export function emitRoadmapUpdate(roadmap) {
  * @param {Object} step - The completed step object (includes result)
  */
 export function emitRoadmapCheckpoint(stepIndex, step) {
-    broadcast(Events.ROADMAP_CHECKPOINT, { stepIndex, step });
+  broadcast(Events.ROADMAP_CHECKPOINT, { stepIndex, step });
 }

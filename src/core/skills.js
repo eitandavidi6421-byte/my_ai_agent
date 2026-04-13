@@ -181,35 +181,49 @@ The user's OAuth2 token is automatically attached to your requests.
 
 /** @type {Object<string, SkillDefinition>} */
 export const SKILLS = Object.freeze({
-    researcher: {
-        name: 'researcher',
-        description: 'DOM reading, data extraction, web search. Read-only — never modifies pages.',
-        systemPrompt: RESEARCHER_PROMPT,
-        allowedActions: ['open_url', 'read_page', 'extract_data', 'done'],
-        timeoutMs: 30_000,  // 30s — research tasks are typically fast
-    },
+  researcher: {
+    name: "researcher",
+    description:
+      "DOM reading, data extraction, web search. Read-only — never modifies pages.",
+    systemPrompt: RESEARCHER_PROMPT,
+    allowedActions: ["open_url", "read_page", "extract_data", "done"],
+    timeoutMs: 30_000, // 30s — research tasks are typically fast
+  },
 
-    action_writer: {
-        name: 'action_writer',
-        description: 'DOM clicking, typing, form filling, rich text editing. Full write access.',
-        systemPrompt: ACTION_WRITER_PROMPT,
-        allowedActions: [
-            'open_url', 'read_page', 'interact_element', 'click_text',
-            'type_text', 'type_in_editor', 'key_press', 'editor_format',
-            'done', 'pause_for_human',
-        ],
-        timeoutMs: 60_000,  // 60s — writing/editing takes longer
-    },
+  action_writer: {
+    name: "action_writer",
+    description:
+      "DOM clicking, typing, form filling, rich text editing. Full write access.",
+    systemPrompt: ACTION_WRITER_PROMPT,
+    allowedActions: [
+      "open_url",
+      "read_page",
+      "interact_element",
+      "click_text",
+      "type_text",
+      "type_in_editor",
+      "key_press",
+      "editor_format",
+      "done",
+      "pause_for_human",
+    ],
+    timeoutMs: 60_000, // 60s — writing/editing takes longer
+  },
 
-    google_manager: {
-        name: 'google_manager',
-        description: 'Google API integration via OAuth2: Drive, Calendar, Gmail operations.',
-        systemPrompt: GOOGLE_MANAGER_PROMPT,
-        allowedActions: [
-            'fetch_google_api', 'open_url', 'read_page', 'interact_element', 'done',
-        ],
-        timeoutMs: 45_000,  // 45s — API calls can be slow
-    },
+  google_manager: {
+    name: "google_manager",
+    description:
+      "Google API integration via OAuth2: Drive, Calendar, Gmail operations.",
+    systemPrompt: GOOGLE_MANAGER_PROMPT,
+    allowedActions: [
+      "fetch_google_api",
+      "open_url",
+      "read_page",
+      "interact_element",
+      "done",
+    ],
+    timeoutMs: 45_000, // 45s — API calls can be slow
+  },
 });
 
 /**
@@ -218,7 +232,7 @@ export const SKILLS = Object.freeze({
  * @returns {SkillDefinition|null}
  */
 export function getSkill(skillName) {
-    return SKILLS[skillName] || null;
+  return SKILLS[skillName] || null;
 }
 
 /**
@@ -228,9 +242,9 @@ export function getSkill(skillName) {
  * @returns {boolean}
  */
 export function isActionAllowed(skillName, actionName) {
-    const skill = SKILLS[skillName];
-    if (!skill) return false;
-    return skill.allowedActions.includes(actionName);
+  const skill = SKILLS[skillName];
+  if (!skill) return false;
+  return skill.allowedActions.includes(actionName);
 }
 
 /**
@@ -239,8 +253,8 @@ export function isActionAllowed(skillName, actionName) {
  * @returns {string} System prompt text
  */
 export function getSkillPrompt(skillName) {
-    const skill = SKILLS[skillName];
-    return skill ? skill.systemPrompt : '';
+  const skill = SKILLS[skillName];
+  return skill ? skill.systemPrompt : "";
 }
 
 /**
@@ -248,5 +262,5 @@ export function getSkillPrompt(skillName) {
  * @returns {string[]}
  */
 export function getSkillNames() {
-    return Object.keys(SKILLS);
+  return Object.keys(SKILLS);
 }

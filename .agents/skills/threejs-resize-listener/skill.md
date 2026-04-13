@@ -25,26 +25,26 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 const camera = new THREE.PerspectiveCamera(
-    75, 
-    window.innerWidth / window.innerHeight, 
-    0.1, 
-    1000
+  75,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  1000,
 );
 
 // 2. The Resize Handler
 function onWindowResize() {
-    // Update Camera
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
+  // Update Camera
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
 
-    // Update Renderer
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    
-    // (Optional) Update CSS or other dependent elements
+  // Update Renderer
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  // (Optional) Update CSS or other dependent elements
 }
 
 // 3. Attach Listener
-window.addEventListener('resize', onWindowResize, false);
+window.addEventListener("resize", onWindowResize, false);
 ```
 
 ---
@@ -54,18 +54,18 @@ window.addEventListener('resize', onWindowResize, false);
 If the canvas is inside a specific `div` (not full-screen), use `getBoundingClientRect()` or even better, a `ResizeObserver`.
 
 ```javascript
-const container = document.getElementById('canvas-container');
+const container = document.getElementById("canvas-container");
 
 // Preferred method for modern apps:
-const resizeObserver = new ResizeObserver(entries => {
-    for (let entry of entries) {
-        const { width, height } = entry.contentRect;
-        
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-        
-        renderer.setSize(width, height);
-    }
+const resizeObserver = new ResizeObserver((entries) => {
+  for (let entry of entries) {
+    const { width, height } = entry.contentRect;
+
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+
+    renderer.setSize(width, height);
+  }
 });
 
 resizeObserver.observe(container);

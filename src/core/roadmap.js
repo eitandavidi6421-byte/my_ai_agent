@@ -7,10 +7,15 @@
  * Storage key: `activeRoadmaps` — Object<conversationId, RoadmapState>
  */
 
-import { storageMutex } from './storage.js';
-import { callGeminiAPI } from './api.js';
-import { parseJSON } from '../utils/helpers.js';
-import { emitRoadmapUpdate, emitRoadmapCheckpoint, broadcast, Events } from './events.js';
+import { storageMutex } from "./storage.js";
+import { callGeminiAPI } from "./api.js";
+import { parseJSON } from "../utils/helpers.js";
+import {
+  emitRoadmapUpdate,
+  emitRoadmapCheckpoint,
+  broadcast,
+  Events,
+} from "./events.js";
 
 // ═══════════════════════════════════════════════════════════
 // ROADMAP PLANNER PROMPT
@@ -87,367 +92,400 @@ ordered list of executable steps (a "roadmap").
 // ═══════════════════════════════════════════════════════════
 
 export class RoadmapManager {
-    constructor() {
-        // In-memory cache for fast access (mirrors storage)
-        this._cache = new Map();
+  constructor() {
+    // In-memory cache for fast access (mirrors storage)
+    this._cache = new Map();
+  }
+
+  // ─── GENERATE ROADMAP ────────────────────────────────────
+
+  /**
+   * Generate a new roadmap from a complex user request using Gemini.
+   * Persists the roadmap to chrome.storage.local.
+   *
+   * @param {string} userRequest - The user's complex request
+   * @param {string} conversationId - Conversation to attach the roadmap to
+   * @returns {Promise<RoadmapState>} The generated roadmap
+   */
+  async generateRoadmap(userRequest, conversationId) {
+    console.log(
+      "[Roadmap] Generating roadmap for:",
+      userRequest.substring(0, 80),
+    );
+
+    // Call Gemini to decompose the request into steps
+    const messages = [
+      {
+        role: "user",
+        parts: [
+          {
+            text: `Decompose this request into a step-by-step roadmap:\n\n"${userRequest}"`,
+          },
+        ],
+      },
+    ];
+
+    const raw = await callGeminiAPI(ROADMAP_PLANNER_PROMPT, messages);
+    const stepsArray = parseJSON(raw);
+
+    if (!stepsArray || !Array.isArray(stepsArray)) {
+      throw new Error(
+        "Failed to generate roadmap — Gemini returned invalid JSON",
+      );
     }
 
-    // ─── GENERATE ROADMAP ────────────────────────────────────
+    // Build the roadmap state
+    const roadmap = {
+      conversationId,
+      steps: stepsArray.map((step, index) => ({
+        id: `step_${index}_${Date.now()}`,
+        description: step.description || `Step ${index + 1}`,
+        skill: step.skill || "researcher",
+        url: step.url || "",
+        status: "pending",
+        result: null,
+        retryCount: 0,
+        dependsOn: step.dependsOn || [],
+      })),
+      currentIndex: 0,
+      state: "pending_approval", // Start paused — user must approve
+      userRequest,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
 
-    /**
-     * Generate a new roadmap from a complex user request using Gemini.
-     * Persists the roadmap to chrome.storage.local.
-     *
-     * @param {string} userRequest - The user's complex request
-     * @param {string} conversationId - Conversation to attach the roadmap to
-     * @returns {Promise<RoadmapState>} The generated roadmap
-     */
-    async generateRoadmap(userRequest, conversationId) {
-        console.log('[Roadmap] Generating roadmap for:', userRequest.substring(0, 80));
+    // Persist to storage
+    await this._saveRoadmap(conversationId, roadmap);
+    this._cache.set(conversationId, roadmap);
 
-        // Call Gemini to decompose the request into steps
-        const messages = [{
-            role: 'user',
-            parts: [{ text: `Decompose this request into a step-by-step roadmap:\n\n"${userRequest}"` }]
-        }];
+    // Notify UI
+    broadcast(Events.ROADMAP_CREATED, { roadmap });
+    emitRoadmapUpdate(roadmap);
 
-        const raw = await callGeminiAPI(ROADMAP_PLANNER_PROMPT, messages);
-        const stepsArray = parseJSON(raw);
+    console.log(
+      `[Roadmap] Created ${roadmap.steps.length} steps for conversation ${conversationId}`,
+    );
+    return roadmap;
+  }
 
-        if (!stepsArray || !Array.isArray(stepsArray)) {
-            throw new Error('Failed to generate roadmap — Gemini returned invalid JSON');
-        }
+  // ─── GET ROADMAP ─────────────────────────────────────────
 
-        // Build the roadmap state
-        const roadmap = {
-            conversationId,
-            steps: stepsArray.map((step, index) => ({
-                id: `step_${index}_${Date.now()}`,
-                description: step.description || `Step ${index + 1}`,
-                skill: step.skill || 'researcher',
-                url: step.url || '',
-                status: 'pending',
-                result: null,
-                retryCount: 0,
-                dependsOn: step.dependsOn || [],
-            })),
-            currentIndex: 0,
-            state: 'pending_approval',  // Start paused — user must approve
-            userRequest,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-        };
+  /**
+   * Get the current roadmap for a conversation.
+   * Checks in-memory cache first, then falls back to storage.
+   *
+   * @param {string} conversationId
+   * @returns {Promise<RoadmapState|null>}
+   */
+  async getRoadmap(conversationId) {
+    // Check cache first
+    if (this._cache.has(conversationId)) {
+      return this._cache.get(conversationId);
+    }
 
-        // Persist to storage
-        await this._saveRoadmap(conversationId, roadmap);
+    // Load from storage
+    await storageMutex.lock();
+    try {
+      const { activeRoadmaps = {} } = await chrome.storage.local.get([
+        "activeRoadmaps",
+      ]);
+      const roadmap = activeRoadmaps[conversationId] || null;
+      if (roadmap) {
         this._cache.set(conversationId, roadmap);
+      }
+      return roadmap;
+    } finally {
+      storageMutex.unlock();
+    }
+  }
 
-        // Notify UI
-        broadcast(Events.ROADMAP_CREATED, { roadmap });
-        emitRoadmapUpdate(roadmap);
+  // ─── EXECUTE NEXT STEP ───────────────────────────────────
 
-        console.log(`[Roadmap] Created ${roadmap.steps.length} steps for conversation ${conversationId}`);
-        return roadmap;
+  /**
+   * Get the next step to execute. Advances the roadmap if possible.
+   * Returns null if all steps are done or roadmap is paused.
+   *
+   * @param {string} conversationId
+   * @returns {Promise<{step: RoadmapStep, index: number}|null>}
+   */
+  async getNextStep(conversationId) {
+    const roadmap = await this.getRoadmap(conversationId);
+    if (!roadmap || roadmap.state === "completed") return null;
+
+    // Find the next pending step whose dependencies are all done
+    for (let i = 0; i < roadmap.steps.length; i++) {
+      const step = roadmap.steps[i];
+      if (step.status !== "pending") continue;
+
+      // Check dependencies
+      const depsResolved = step.dependsOn.every((depIdx) => {
+        const depStep = roadmap.steps[depIdx];
+        return depStep && depStep.status === "done";
+      });
+
+      if (depsResolved) {
+        return { step, index: i };
+      }
     }
 
-    // ─── GET ROADMAP ─────────────────────────────────────────
+    return null; // No step ready
+  }
 
-    /**
-     * Get the current roadmap for a conversation.
-     * Checks in-memory cache first, then falls back to storage.
-     *
-     * @param {string} conversationId
-     * @returns {Promise<RoadmapState|null>}
-     */
-    async getRoadmap(conversationId) {
-        // Check cache first
-        if (this._cache.has(conversationId)) {
-            return this._cache.get(conversationId);
-        }
+  // ─── MARK STEP RUNNING ────────────────────────────────────
 
-        // Load from storage
-        await storageMutex.lock();
-        try {
-            const { activeRoadmaps = {} } = await chrome.storage.local.get(['activeRoadmaps']);
-            const roadmap = activeRoadmaps[conversationId] || null;
-            if (roadmap) {
-                this._cache.set(conversationId, roadmap);
-            }
-            return roadmap;
-        } finally {
-            storageMutex.unlock();
-        }
+  /**
+   * Transition a step to 'running' state.
+   *
+   * @param {string} conversationId
+   * @param {number} stepIndex
+   */
+  async markStepRunning(conversationId, stepIndex) {
+    const roadmap = await this.getRoadmap(conversationId);
+    if (!roadmap) return;
+
+    roadmap.steps[stepIndex].status = "running";
+    roadmap.currentIndex = stepIndex;
+    roadmap.state = "running";
+    roadmap.updatedAt = Date.now();
+
+    await this._saveRoadmap(conversationId, roadmap);
+    emitRoadmapUpdate(roadmap);
+  }
+
+  // ─── MARK STEP DONE (→ CHECKPOINT) ───────────────────────
+
+  /**
+   * Mark a step as done and transition roadmap to 'pending_approval'.
+   * This is the CHECKPOINT — the orchestrator pauses here until the user
+   * sends CONTINUE, RETRY, or EDIT_ROADMAP.
+   *
+   * @param {string} conversationId
+   * @param {number} stepIndex
+   * @param {string} result - The agent's final report for this step
+   */
+  async markStepDone(conversationId, stepIndex, result) {
+    const roadmap = await this.getRoadmap(conversationId);
+    if (!roadmap) return;
+
+    roadmap.steps[stepIndex].status = "done";
+    roadmap.steps[stepIndex].result = result;
+    roadmap.updatedAt = Date.now();
+
+    // Check if all steps are done
+    const allDone = roadmap.steps.every(
+      (s) => s.status === "done" || s.status === "skipped",
+    );
+
+    if (allDone) {
+      roadmap.state = "completed";
+      broadcast(Events.ROADMAP_COMPLETED, { roadmap });
+    } else {
+      // CHECKPOINT: pause and wait for user approval
+      roadmap.state = "pending_approval";
+      emitRoadmapCheckpoint(stepIndex, roadmap.steps[stepIndex]);
     }
 
-    // ─── EXECUTE NEXT STEP ───────────────────────────────────
+    await this._saveRoadmap(conversationId, roadmap);
+    emitRoadmapUpdate(roadmap);
 
-    /**
-     * Get the next step to execute. Advances the roadmap if possible.
-     * Returns null if all steps are done or roadmap is paused.
-     *
-     * @param {string} conversationId
-     * @returns {Promise<{step: RoadmapStep, index: number}|null>}
-     */
-    async getNextStep(conversationId) {
-        const roadmap = await this.getRoadmap(conversationId);
-        if (!roadmap || roadmap.state === 'completed') return null;
+    console.log(
+      `[Roadmap] Step ${stepIndex} completed. State: ${roadmap.state}`,
+    );
+  }
 
-        // Find the next pending step whose dependencies are all done
-        for (let i = 0; i < roadmap.steps.length; i++) {
-            const step = roadmap.steps[i];
-            if (step.status !== 'pending') continue;
+  // ─── MARK STEP ERROR ─────────────────────────────────────
 
-            // Check dependencies
-            const depsResolved = step.dependsOn.every(depIdx => {
-                const depStep = roadmap.steps[depIdx];
-                return depStep && depStep.status === 'done';
-            });
+  /**
+   * Mark a step as errored.
+   *
+   * @param {string} conversationId
+   * @param {number} stepIndex
+   * @param {string} errorMsg
+   */
+  async markStepError(conversationId, stepIndex, errorMsg) {
+    const roadmap = await this.getRoadmap(conversationId);
+    if (!roadmap) return;
 
-            if (depsResolved) {
-                return { step, index: i };
-            }
-        }
+    roadmap.steps[stepIndex].status = "error";
+    roadmap.steps[stepIndex].result = `❌ Error: ${errorMsg}`;
+    roadmap.state = "pending_approval"; // Pause on error too
+    roadmap.updatedAt = Date.now();
 
-        return null; // No step ready
+    await this._saveRoadmap(conversationId, roadmap);
+    emitRoadmapUpdate(roadmap);
+    emitRoadmapCheckpoint(stepIndex, roadmap.steps[stepIndex]);
+  }
+
+  // ─── DASHBOARD COMMANDS ──────────────────────────────────
+
+  /**
+   * CONTINUE: Approve the last checkpoint and proceed to the next step.
+   *
+   * @param {string} conversationId
+   * @returns {Promise<{step: RoadmapStep, index: number}|null>} The next step to execute, or null if completed
+   */
+  async continueRoadmap(conversationId) {
+    const roadmap = await this.getRoadmap(conversationId);
+    if (!roadmap || roadmap.state === "completed") return null;
+
+    // Resume from pending_approval
+    roadmap.state = "running";
+    roadmap.updatedAt = Date.now();
+    await this._saveRoadmap(conversationId, roadmap);
+
+    // Find and return the next step
+    return this.getNextStep(conversationId);
+  }
+
+  /**
+   * RETRY: Reset the current step and re-execute it.
+   * Optionally update the step description with new instructions.
+   *
+   * @param {string} conversationId
+   * @param {string} [updatedInstructions] - Optional new instructions for the step
+   * @returns {Promise<{step: RoadmapStep, index: number}|null>}
+   */
+  async retryStep(conversationId, updatedInstructions = null) {
+    const roadmap = await this.getRoadmap(conversationId);
+    if (!roadmap) return null;
+
+    // Find the last non-pending step (the one to retry)
+    let retryIndex = -1;
+    for (let i = roadmap.steps.length - 1; i >= 0; i--) {
+      if (
+        roadmap.steps[i].status === "done" ||
+        roadmap.steps[i].status === "error"
+      ) {
+        retryIndex = i;
+        break;
+      }
     }
 
-    // ─── MARK STEP RUNNING ────────────────────────────────────
+    if (retryIndex === -1) return null;
 
-    /**
-     * Transition a step to 'running' state.
-     *
-     * @param {string} conversationId
-     * @param {number} stepIndex
-     */
-    async markStepRunning(conversationId, stepIndex) {
-        const roadmap = await this.getRoadmap(conversationId);
-        if (!roadmap) return;
+    // Reset the step
+    roadmap.steps[retryIndex].status = "pending";
+    roadmap.steps[retryIndex].result = null;
+    roadmap.steps[retryIndex].retryCount++;
 
-        roadmap.steps[stepIndex].status = 'running';
-        roadmap.currentIndex = stepIndex;
-        roadmap.state = 'running';
-        roadmap.updatedAt = Date.now();
-
-        await this._saveRoadmap(conversationId, roadmap);
-        emitRoadmapUpdate(roadmap);
+    if (updatedInstructions) {
+      roadmap.steps[retryIndex].description = updatedInstructions;
     }
 
-    // ─── MARK STEP DONE (→ CHECKPOINT) ───────────────────────
+    roadmap.state = "running";
+    roadmap.updatedAt = Date.now();
+    await this._saveRoadmap(conversationId, roadmap);
+    emitRoadmapUpdate(roadmap);
 
-    /**
-     * Mark a step as done and transition roadmap to 'pending_approval'.
-     * This is the CHECKPOINT — the orchestrator pauses here until the user
-     * sends CONTINUE, RETRY, or EDIT_ROADMAP.
-     *
-     * @param {string} conversationId
-     * @param {number} stepIndex
-     * @param {string} result - The agent's final report for this step
-     */
-    async markStepDone(conversationId, stepIndex, result) {
-        const roadmap = await this.getRoadmap(conversationId);
-        if (!roadmap) return;
+    return { step: roadmap.steps[retryIndex], index: retryIndex };
+  }
 
-        roadmap.steps[stepIndex].status = 'done';
-        roadmap.steps[stepIndex].result = result;
-        roadmap.updatedAt = Date.now();
+  /**
+   * EDIT_ROADMAP: Replace all remaining (pending) steps with a new array.
+   * Completed steps are preserved.
+   *
+   * @param {string} conversationId
+   * @param {Array<{description: string, skill: string, url: string}>} newSteps
+   * @returns {Promise<RoadmapState>}
+   */
+  async editRoadmap(conversationId, newSteps) {
+    const roadmap = await this.getRoadmap(conversationId);
+    if (!roadmap) throw new Error("No active roadmap for this conversation");
 
-        // Check if all steps are done
-        const allDone = roadmap.steps.every(s => s.status === 'done' || s.status === 'skipped');
+    // Keep completed steps, replace the rest
+    const completedSteps = roadmap.steps.filter((s) => s.status === "done");
+    const newStepObjects = newSteps.map((step, index) => ({
+      id: `step_${completedSteps.length + index}_${Date.now()}`,
+      description: step.description,
+      skill: step.skill || "researcher",
+      url: step.url || "",
+      status: "pending",
+      result: null,
+      retryCount: 0,
+      dependsOn: step.dependsOn || [],
+    }));
 
-        if (allDone) {
-            roadmap.state = 'completed';
-            broadcast(Events.ROADMAP_COMPLETED, { roadmap });
-        } else {
-            // CHECKPOINT: pause and wait for user approval
-            roadmap.state = 'pending_approval';
-            emitRoadmapCheckpoint(stepIndex, roadmap.steps[stepIndex]);
-        }
+    roadmap.steps = [...completedSteps, ...newStepObjects];
+    roadmap.currentIndex = completedSteps.length;
+    roadmap.state = "pending_approval";
+    roadmap.updatedAt = Date.now();
 
-        await this._saveRoadmap(conversationId, roadmap);
-        emitRoadmapUpdate(roadmap);
+    await this._saveRoadmap(conversationId, roadmap);
+    emitRoadmapUpdate(roadmap);
 
-        console.log(`[Roadmap] Step ${stepIndex} completed. State: ${roadmap.state}`);
+    console.log(
+      `[Roadmap] Edited: ${completedSteps.length} kept, ${newStepObjects.length} new steps`,
+    );
+    return roadmap;
+  }
+
+  // ─── DELETE ROADMAP ──────────────────────────────────────
+
+  /**
+   * Remove a roadmap from storage and cache.
+   *
+   * @param {string} conversationId
+   */
+  async deleteRoadmap(conversationId) {
+    this._cache.delete(conversationId);
+
+    await storageMutex.lock();
+    try {
+      const { activeRoadmaps = {} } = await chrome.storage.local.get([
+        "activeRoadmaps",
+      ]);
+      delete activeRoadmaps[conversationId];
+      await chrome.storage.local.set({ activeRoadmaps });
+    } finally {
+      storageMutex.unlock();
     }
+  }
 
-    // ─── MARK STEP ERROR ─────────────────────────────────────
+  // ─── COLLECT PREVIOUS RESULTS ─────────────────────────────
 
-    /**
-     * Mark a step as errored.
-     *
-     * @param {string} conversationId
-     * @param {number} stepIndex
-     * @param {string} errorMsg
-     */
-    async markStepError(conversationId, stepIndex, errorMsg) {
-        const roadmap = await this.getRoadmap(conversationId);
-        if (!roadmap) return;
+  /**
+   * Collect all completed step results as context for the next step.
+   * This data is injected into the agent's task description so it has
+   * access to all previous research/work.
+   *
+   * @param {string} conversationId
+   * @returns {Promise<string>} Formatted context string
+   */
+  async collectPreviousResults(conversationId) {
+    const roadmap = await this.getRoadmap(conversationId);
+    if (!roadmap) return "";
 
-        roadmap.steps[stepIndex].status = 'error';
-        roadmap.steps[stepIndex].result = `❌ Error: ${errorMsg}`;
-        roadmap.state = 'pending_approval'; // Pause on error too
-        roadmap.updatedAt = Date.now();
+    const completedSteps = roadmap.steps.filter(
+      (s) => s.status === "done" && s.result,
+    );
+    if (completedSteps.length === 0) return "";
 
-        await this._saveRoadmap(conversationId, roadmap);
-        emitRoadmapUpdate(roadmap);
-        emitRoadmapCheckpoint(stepIndex, roadmap.steps[stepIndex]);
+    return completedSteps
+      .map(
+        (step, i) =>
+          `=== Step ${i + 1}: ${step.description} (${step.skill}) ===\n${step.result}`,
+      )
+      .join("\n\n");
+  }
+
+  // ─── PRIVATE: PERSIST TO STORAGE ─────────────────────────
+
+  /**
+   * Save roadmap to chrome.storage.local under the `activeRoadmaps` key.
+   * @private
+   */
+  async _saveRoadmap(conversationId, roadmap) {
+    this._cache.set(conversationId, roadmap);
+
+    await storageMutex.lock();
+    try {
+      const { activeRoadmaps = {} } = await chrome.storage.local.get([
+        "activeRoadmaps",
+      ]);
+      activeRoadmaps[conversationId] = roadmap;
+      await chrome.storage.local.set({ activeRoadmaps });
+    } finally {
+      storageMutex.unlock();
     }
-
-    // ─── DASHBOARD COMMANDS ──────────────────────────────────
-
-    /**
-     * CONTINUE: Approve the last checkpoint and proceed to the next step.
-     *
-     * @param {string} conversationId
-     * @returns {Promise<{step: RoadmapStep, index: number}|null>} The next step to execute, or null if completed
-     */
-    async continueRoadmap(conversationId) {
-        const roadmap = await this.getRoadmap(conversationId);
-        if (!roadmap || roadmap.state === 'completed') return null;
-
-        // Resume from pending_approval
-        roadmap.state = 'running';
-        roadmap.updatedAt = Date.now();
-        await this._saveRoadmap(conversationId, roadmap);
-
-        // Find and return the next step
-        return this.getNextStep(conversationId);
-    }
-
-    /**
-     * RETRY: Reset the current step and re-execute it.
-     * Optionally update the step description with new instructions.
-     *
-     * @param {string} conversationId
-     * @param {string} [updatedInstructions] - Optional new instructions for the step
-     * @returns {Promise<{step: RoadmapStep, index: number}|null>}
-     */
-    async retryStep(conversationId, updatedInstructions = null) {
-        const roadmap = await this.getRoadmap(conversationId);
-        if (!roadmap) return null;
-
-        // Find the last non-pending step (the one to retry)
-        let retryIndex = -1;
-        for (let i = roadmap.steps.length - 1; i >= 0; i--) {
-            if (roadmap.steps[i].status === 'done' || roadmap.steps[i].status === 'error') {
-                retryIndex = i;
-                break;
-            }
-        }
-
-        if (retryIndex === -1) return null;
-
-        // Reset the step
-        roadmap.steps[retryIndex].status = 'pending';
-        roadmap.steps[retryIndex].result = null;
-        roadmap.steps[retryIndex].retryCount++;
-
-        if (updatedInstructions) {
-            roadmap.steps[retryIndex].description = updatedInstructions;
-        }
-
-        roadmap.state = 'running';
-        roadmap.updatedAt = Date.now();
-        await this._saveRoadmap(conversationId, roadmap);
-        emitRoadmapUpdate(roadmap);
-
-        return { step: roadmap.steps[retryIndex], index: retryIndex };
-    }
-
-    /**
-     * EDIT_ROADMAP: Replace all remaining (pending) steps with a new array.
-     * Completed steps are preserved.
-     *
-     * @param {string} conversationId
-     * @param {Array<{description: string, skill: string, url: string}>} newSteps
-     * @returns {Promise<RoadmapState>}
-     */
-    async editRoadmap(conversationId, newSteps) {
-        const roadmap = await this.getRoadmap(conversationId);
-        if (!roadmap) throw new Error('No active roadmap for this conversation');
-
-        // Keep completed steps, replace the rest
-        const completedSteps = roadmap.steps.filter(s => s.status === 'done');
-        const newStepObjects = newSteps.map((step, index) => ({
-            id: `step_${completedSteps.length + index}_${Date.now()}`,
-            description: step.description,
-            skill: step.skill || 'researcher',
-            url: step.url || '',
-            status: 'pending',
-            result: null,
-            retryCount: 0,
-            dependsOn: step.dependsOn || [],
-        }));
-
-        roadmap.steps = [...completedSteps, ...newStepObjects];
-        roadmap.currentIndex = completedSteps.length;
-        roadmap.state = 'pending_approval';
-        roadmap.updatedAt = Date.now();
-
-        await this._saveRoadmap(conversationId, roadmap);
-        emitRoadmapUpdate(roadmap);
-
-        console.log(`[Roadmap] Edited: ${completedSteps.length} kept, ${newStepObjects.length} new steps`);
-        return roadmap;
-    }
-
-    // ─── DELETE ROADMAP ──────────────────────────────────────
-
-    /**
-     * Remove a roadmap from storage and cache.
-     *
-     * @param {string} conversationId
-     */
-    async deleteRoadmap(conversationId) {
-        this._cache.delete(conversationId);
-
-        await storageMutex.lock();
-        try {
-            const { activeRoadmaps = {} } = await chrome.storage.local.get(['activeRoadmaps']);
-            delete activeRoadmaps[conversationId];
-            await chrome.storage.local.set({ activeRoadmaps });
-        } finally {
-            storageMutex.unlock();
-        }
-    }
-
-    // ─── COLLECT PREVIOUS RESULTS ─────────────────────────────
-
-    /**
-     * Collect all completed step results as context for the next step.
-     * This data is injected into the agent's task description so it has
-     * access to all previous research/work.
-     *
-     * @param {string} conversationId
-     * @returns {Promise<string>} Formatted context string
-     */
-    async collectPreviousResults(conversationId) {
-        const roadmap = await this.getRoadmap(conversationId);
-        if (!roadmap) return '';
-
-        const completedSteps = roadmap.steps.filter(s => s.status === 'done' && s.result);
-        if (completedSteps.length === 0) return '';
-
-        return completedSteps.map((step, i) =>
-            `=== Step ${i + 1}: ${step.description} (${step.skill}) ===\n${step.result}`
-        ).join('\n\n');
-    }
-
-    // ─── PRIVATE: PERSIST TO STORAGE ─────────────────────────
-
-    /**
-     * Save roadmap to chrome.storage.local under the `activeRoadmaps` key.
-     * @private
-     */
-    async _saveRoadmap(conversationId, roadmap) {
-        this._cache.set(conversationId, roadmap);
-
-        await storageMutex.lock();
-        try {
-            const { activeRoadmaps = {} } = await chrome.storage.local.get(['activeRoadmaps']);
-            activeRoadmaps[conversationId] = roadmap;
-            await chrome.storage.local.set({ activeRoadmaps });
-        } finally {
-            storageMutex.unlock();
-        }
-    }
+  }
 }

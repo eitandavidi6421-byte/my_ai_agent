@@ -16,23 +16,23 @@ Because Chrome Extension background scripts often aren't ES modules and rely on 
 ### Setup (background.test.js)
 
 ```javascript
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
+const fs = require("fs");
+const vm = require("vm");
+const path = require("path");
 
-const code = fs.readFileSync(path.join(__dirname, './background.js'), 'utf8');
+const code = fs.readFileSync(path.join(__dirname, "./background.js"), "utf8");
 
 const sandbox = {
-    chrome: {
-        storage: { local: { get: jest.fn(), set: jest.fn() } },
-        runtime: { onMessage: { addListener: jest.fn() } },
-        tabs: { create: jest.fn(), executeScript: jest.fn() },
-        // ... more mocks
-    },
-    crypto: { randomUUID: () => 'test-id' },
-    fetch: jest.fn(),
-    console,
-    setTimeout
+  chrome: {
+    storage: { local: { get: jest.fn(), set: jest.fn() } },
+    runtime: { onMessage: { addListener: jest.fn() } },
+    tabs: { create: jest.fn(), executeScript: jest.fn() },
+    // ... more mocks
+  },
+  crypto: { randomUUID: () => "test-id" },
+  fetch: jest.fn(),
+  console,
+  setTimeout,
 };
 
 vm.createContext(sandbox);
@@ -48,23 +48,23 @@ Once loaded into the `sandbox`, we can test internal functions directly via `san
 ### 1. AI Refusal Detection
 
 ```javascript
-describe('isRefusal', () => {
-    it('should catch Hebrew refusals', () => {
-        expect(sandbox.isRefusal("כמודל שפה, איני יכול...")).toBe(true);
-    });
+describe("isRefusal", () => {
+  it("should catch Hebrew refusals", () => {
+    expect(sandbox.isRefusal("כמודל שפה, איני יכול...")).toBe(true);
+  });
 });
 ```
 
 ### 2. Robust JSON Parsing
 
-```javascript
-describe('parseJSON', () => {
-    it('should extract JSON from markdown blocks', () => {
-        const raw = "Sure! ```json\n{\"action\": \"done\"}\n```";
-        expect(sandbox.parseJSON(raw)).toEqual({ action: 'done' });
-    });
+````javascript
+describe("parseJSON", () => {
+  it("should extract JSON from markdown blocks", () => {
+    const raw = 'Sure! ```json\n{"action": "done"}\n```';
+    expect(sandbox.parseJSON(raw)).toEqual({ action: "done" });
+  });
 });
-```
+````
 
 ---
 
@@ -73,20 +73,20 @@ describe('parseJSON', () => {
 When testing async functions (like `updDirect`), mock the `chrome.storage.local.get` return value.
 
 ```javascript
-it('should update worker status atomically', async () => {
-    sandbox.chrome.storage.local.get.mockImplementation((keys, cb) => {
-        cb({ activeWorkers: { 'agent_1': { status: 'running' } } });
-    });
+it("should update worker status atomically", async () => {
+  sandbox.chrome.storage.local.get.mockImplementation((keys, cb) => {
+    cb({ activeWorkers: { agent_1: { status: "running" } } });
+  });
 
-    await sandbox.updDirect('agent_1', { status: 'done' });
+  await sandbox.updDirect("agent_1", { status: "done" });
 
-    expect(sandbox.chrome.storage.local.set).toHaveBeenCalledWith(
-        expect.objectContaining({
-            activeWorkers: expect.objectContaining({
-                'agent_1': expect.objectContaining({ status: 'done' })
-            })
-        })
-    );
+  expect(sandbox.chrome.storage.local.set).toHaveBeenCalledWith(
+    expect.objectContaining({
+      activeWorkers: expect.objectContaining({
+        agent_1: expect.objectContaining({ status: "done" }),
+      }),
+    }),
+  );
 });
 ```
 

@@ -25,12 +25,17 @@ The dashboard follows a "Gemini-inspired" aesthetic:
 Messages are differentiated by roles: `user`, `ai`, and `progress` (loading state).
 
 ```javascript
-function addMessageUI(text, isUser = false, isProgress = false, spawnedWorkers = null) {
-  const msg = document.createElement('div');
-  msg.className = `message ${isUser ? 'user' : isProgress ? 'progress' : 'ai'}`;
-  
+function addMessageUI(
+  text,
+  isUser = false,
+  isProgress = false,
+  spawnedWorkers = null,
+) {
+  const msg = document.createElement("div");
+  msg.className = `message ${isUser ? "user" : isProgress ? "progress" : "ai"}`;
+
   if (isProgress) {
-    msg.id = 'temp-loader';
+    msg.id = "temp-loader";
     msg.innerHTML = `<div class="msg-bubble-progress">
         <div class="pill-spinner"></div>
         <span id="progress-text">${text}</span>
@@ -39,18 +44,20 @@ function addMessageUI(text, isUser = false, isProgress = false, spawnedWorkers =
     msg.innerHTML = `<div class="msg-bubble-user">${escapeHtml(text)}</div>`;
   } else {
     // AI Message with potential Agent Pills
-    const wrap = document.createElement('div');
-    wrap.className = 'msg-ai-wrap';
+    const wrap = document.createElement("div");
+    wrap.className = "msg-ai-wrap";
 
     if (spawnedWorkers?.length > 0) {
-      const pillGroup = document.createElement('div');
-      pillGroup.className = 'agent-pills-group';
-      spawnedWorkers.forEach(wid => pillGroup.appendChild(buildAgentPill(wid)));
+      const pillGroup = document.createElement("div");
+      pillGroup.className = "agent-pills-group";
+      spawnedWorkers.forEach((wid) =>
+        pillGroup.appendChild(buildAgentPill(wid)),
+      );
       wrap.appendChild(pillGroup);
     }
 
-    const bubble = document.createElement('div');
-    bubble.className = 'msg-bubble-ai';
+    const bubble = document.createElement("div");
+    bubble.className = "msg-bubble-ai";
     bubble.innerHTML = marked.parse(text); // Uses marked.js for Markdown
     wrap.appendChild(bubble);
     msg.appendChild(wrap);
@@ -70,12 +77,12 @@ This is the primary way to show agent activity without cluttering the chat.
 
 ```javascript
 function buildAgentPill(workerId) {
-  const wrapper = document.createElement('div');
-  wrapper.className = 'agent-pill-wrapper';
+  const wrapper = document.createElement("div");
+  wrapper.className = "agent-pill-wrapper";
 
   // The Chip
-  const pill = document.createElement('div');
-  pill.className = 'agent-pill';
+  const pill = document.createElement("div");
+  pill.className = "agent-pill";
   pill.dataset.workerId = workerId;
   pill.innerHTML = `
     <div class="pill-spinner" id="pill-spin-${workerId}"></div>
@@ -85,8 +92,8 @@ function buildAgentPill(workerId) {
   `;
 
   // The Collapsible Panel
-  const panel = document.createElement('div');
-  panel.className = 'agent-thinking';
+  const panel = document.createElement("div");
+  panel.className = "agent-thinking";
   panel.id = `thinking-${workerId}`;
   panel.innerHTML = `
     <div class="thinking-header">
@@ -95,9 +102,9 @@ function buildAgentPill(workerId) {
     <div class="thinking-steps-list" id="pill-steps-${workerId}"></div>
   `;
 
-  pill.addEventListener('click', () => {
-    panel.classList.toggle('open');
-    pill.classList.toggle('expanded');
+  pill.addEventListener("click", () => {
+    panel.classList.toggle("open");
+    pill.classList.toggle("expanded");
     // Refresh logs on open...
   });
 
@@ -115,11 +122,11 @@ The UI must listen for storage changes to update worker statuses in real-time.
 
 ```javascript
 chrome.storage.onChanged.addListener((changes, ns) => {
-  if (ns === 'local' && changes.activeWorkers) {
+  if (ns === "local" && changes.activeWorkers) {
     const workers = changes.activeWorkers.newValue || {};
-    
+
     // Update existing pills in the chat window
-    document.querySelectorAll('.agent-pill[data-worker-id]').forEach(pill => {
+    document.querySelectorAll(".agent-pill[data-worker-id]").forEach((pill) => {
       const wid = pill.dataset.workerId;
       const data = workers[wid];
       if (!data) return;
@@ -140,12 +147,12 @@ The dashboard uses a grid/flex layout that shifts when a sidebar (Canvas or Proj
 ```javascript
 // Toggle CSS class on the main wrapper
 function openCanvas(content) {
-  document.getElementById('main-layout').classList.add('canvas-open');
-  document.getElementById('canvas-content').innerHTML = marked.parse(content);
+  document.getElementById("main-layout").classList.add("canvas-open");
+  document.getElementById("canvas-content").innerHTML = marked.parse(content);
 }
 
 function closeCanvas() {
-  document.getElementById('main-layout').classList.remove('canvas-open');
+  document.getElementById("main-layout").classList.remove("canvas-open");
 }
 ```
 

@@ -15,12 +15,8 @@
   },
   "content_scripts": [
     {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "content-agent.js"
-      ]
+      "matches": ["<all_urls>"],
+      "js": ["content-agent.js"]
     }
   ],
   "permissions": [
@@ -47,7 +43,5 @@
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://generativelanguage.googleapis.com https://www.googleapis.com https://gmail.googleapis.com;"
   },
-  "host_permissions": [
-    "<all_urls>"
-  ]
+  "host_permissions": ["<all_urls>"]
 }
