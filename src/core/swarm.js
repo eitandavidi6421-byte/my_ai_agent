@@ -26,9 +26,6 @@ import {
   scriptClickText,
   scriptTypeText,
   scriptExtract,
-  scriptKeyPress,
-  scriptAnalyzeEditor,
-  scriptEditorFormat,
   scriptRichTextType,
 } from "../dom/dom-engine.js";
 import { getValidToken } from "./auth.js";
