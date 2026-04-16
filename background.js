@@ -15,11 +15,17 @@ import {
   runAgentlessResearch,
 } from "./src/core/swarm.js";
 import { SwarmOrchestrator } from "./src/core/orchestrator.js";
+import { FeedbackLoopManager } from "./src/core/feedback-loop.js";
 
 // ═══════════════════════════════════════════════════════════
 // ORCHESTRATOR INSTANCE (singleton)
 // ═══════════════════════════════════════════════════════════
 const orchestrator = new SwarmOrchestrator();
+
+// ═══════════════════════════════════════════════════════════
+// FEEDBACK LOOP MANAGER (singleton)
+// ═══════════════════════════════════════════════════════════
+const feedbackLoop = new FeedbackLoopManager();
 
 // ─── KEEPALIVE: Prevents MV3 service worker from dying mid-loop ───
 chrome.alarms.create("swarm_keepalive", { periodInMinutes: 0.4 });
@@ -225,7 +231,92 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   // ─────────────────────────────────────────────────────
-  // SECTION 5: AGENT HEARTBEAT & STATUS (from content-agent.js)
+  // SECTION 5: MANAGER AGENT (CEO) — Hierarchical Orchestration
+  // ─────────────────────────────────────────────────────
+
+  /**
+   * Start a hierarchical goal — CEO decomposes and delegates.
+   */
+  if (request.action === "manager_start_goal") {
+    (async () => {
+      try {
+        const result = await orchestrator.manager.startGoal(
+          request.text,
+          request.conversationId
+        );
+        sendResponse({ success: true, ...result });
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
+  /**
+   * Delegate a specific sub-task to an agent.
+   */
+  if (request.action === "manager_delegate_task") {
+    (async () => {
+      try {
+        const taskId = await orchestrator.manager.delegateTask(
+          request.goalId,
+          request.taskDef,
+          orchestrator
+        );
+        sendResponse({ success: true, taskId });
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
+  /**
+   * Get the status of a hierarchical goal.
+   */
+  if (request.action === "manager_goal_status") {
+    const status = orchestrator.manager.getGoalStatus(request.goalId);
+    sendResponse({ success: true, status });
+    return true;
+  }
+
+  // ─────────────────────────────────────────────────────
+  // SECTION 6: FEEDBACK LOOP & PERFORMANCE
+  // ─────────────────────────────────────────────────────
+
+  /**
+   * Record a user rating for an agent.
+   */
+  if (request.action === "feedback_rate_agent") {
+    (async () => {
+      try {
+        await feedbackLoop.recordUserRating(
+          request.agentType,
+          request.taskId,
+          request.rating,
+          request.feedback
+        );
+        sendResponse({ success: true });
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
+  /**
+   * Get performance report for the dashboard.
+   */
+  if (request.action === "feedback_get_report") {
+    (async () => {
+      const report = await feedbackLoop.generatePerformanceReport();
+      sendResponse({ success: true, report });
+    })();
+    return true;
+  }
+
+  // ─────────────────────────────────────────────────────
+  // SECTION 7: AGENT HEARTBEAT & STATUS (from content-agent.js)
   // ─────────────────────────────────────────────────────
 
   /**
@@ -239,7 +330,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   // ─────────────────────────────────────────────────────
-  // SECTION 6: CONVERSATIONS (unchanged from v4)
+  // SECTION 8: CONVERSATIONS (unchanged from v4)
   // ─────────────────────────────────────────────────────
 
   if (request.action === "list_conversations") {
@@ -283,22 +374,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const wid = "agent_" + generateUUID();
 
     (async () => {
-      const { activeWorkers = {} } = await chrome.storage.local.get([
-        "activeWorkers",
-      ]);
+      await storageMutex.lock();
+      try {
+        const { activeWorkers = {} } = await chrome.storage.local.get([
+          "activeWorkers",
+        ]);
 
-      activeWorkers[wid] = {
-        id: wid,
-        url: wurl,
-        task: wtask,
-        status: "running",
-        logs: [],
-        finalReport: null,
-        spawnedAt: Date.now(),
-        conversationId: conversationId,
-      };
+        activeWorkers[wid] = {
+          id: wid,
+          url: wurl,
+          task: wtask,
+          status: "running",
+          logs: [],
+          finalReport: null,
+          spawnedAt: Date.now(),
+          conversationId: conversationId,
+        };
 
-      await chrome.storage.local.set({ activeWorkers });
+        await chrome.storage.local.set({ activeWorkers });
+      } finally {
+        storageMutex.unlock();
+      }
       chrome.tabs.create({ url: wurl, active: false }, (tab) =>
         runSwarmWorkerLoop(wid, tab.id, wtask),
       );
@@ -355,7 +451,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   // ─────────────────────────────────────────────────────
-  // SECTION 7: WORKER MANAGEMENT (unchanged from v4)
+  // SECTION 9: WORKER MANAGEMENT (unchanged from v4)
   // ─────────────────────────────────────────────────────
 
   if (request.action === "stop_worker") {

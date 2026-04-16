@@ -264,3 +264,15 @@ export function getSkillPrompt(skillName) {
 export function getSkillNames() {
   return Object.keys(SKILLS);
 }
+
+/**
+ * Merge with extended skills (analyst, automation, custom types).
+ * @param {Object} extendedSkills - Extended skills to merge
+ * @returns {Object} Combined skills registry
+ */
+export function mergeWithExtendedSkills(extendedSkills) {
+  return Object.freeze({
+    ...SKILLS,
+    ...extendedSkills,
+  });
+}

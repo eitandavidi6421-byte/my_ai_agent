@@ -253,7 +253,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // CRITICAL FIX: Returning true immediately to keep the Chrome messaging port open for the async sendResponse!
     return true;
-    return true; // Keep channel open for async response
   }
 
   // ─── INTERACT ELEMENT (Robust Execution) ───
@@ -272,15 +271,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     try {
       // 1. Handle Select Dropdowns
       if (
+      const typeText = request.typeText !== undefined ? request.typeText : request.text;
+
+      // 1. Handle Select Dropdowns
+      if (
         el.tagName === "SELECT" &&
-        request.typeText !== undefined &&
-        request.typeText !== null
+        typeText !== undefined &&
+        typeText !== null
       ) {
         const opts = Array.from(el.options);
         const match = opts.find(
           (o) =>
-            o.text.toLowerCase().includes(request.typeText.toLowerCase()) ||
-            o.value.toLowerCase() === request.typeText.toLowerCase(),
+            o.text.toLowerCase().includes(typeText.toLowerCase()) ||
+            o.value.toLowerCase() === typeText.toLowerCase(),
         );
         if (match) {
           el.value = match.value;
@@ -292,7 +295,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         } else {
           sendResponse({
             success: false,
-            feedback: `❌ ערך "${request.typeText}" לא נמצא ב-SELECT.`,
+            feedback: `❌ ערך "${typeText}" לא נמצא ב-SELECT.`,
           });
         }
         return true;
@@ -301,7 +304,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // 2. Handle Checkbox / Radio
       if (
         (el.type === "checkbox" || el.type === "radio") &&
-        (request.typeText === undefined || request.typeText === null)
+        (typeText === undefined || typeText === null)
       ) {
         el.checked = !el.checked;
         el.dispatchEvent(new Event("change", { bubbles: true }));

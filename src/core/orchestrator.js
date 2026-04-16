@@ -26,7 +26,10 @@ import {
 } from "../utils/helpers.js";
 import { getSkill, getSkillPrompt, isActionAllowed } from "./skills.js";
 import { RoadmapManager } from "./roadmap.js";
+import { ManagerAgent } from "./manager-agent.js";
 import { executeAction } from "./swarm.js";
+import { EXTENDED_SKILLS } from "./extended-skills.js";
+import { mergeWithExtendedSkills } from "./skills.js";
 import {
   broadcast,
   Events,
@@ -115,6 +118,16 @@ export class SwarmOrchestrator {
      * Roadmap manager for human-in-the-loop projects.
      */
     this.roadmap = new RoadmapManager();
+
+    /**
+     * Manager agent (CEO) for hierarchical multi-agent orchestration.
+     */
+    this.manager = new ManagerAgent();
+
+    /**
+     * Extended skills registry (includes analyst, automation, custom types).
+     */
+    this.allSkills = mergeWithExtendedSkills(EXTENDED_SKILLS);
 
     /**
      * Processing state to prevent concurrent processQueue calls.
@@ -359,7 +372,7 @@ export class SwarmOrchestrator {
       );
       this.enqueueTask({
         skill: agent.skill,
-        url: agent.task, // Re-infer URL from task
+        url: agent.url || "about:blank", // Use original URL
         task: agent.task,
         conversationId: agent.conversationId,
         retryCount: newRetryCount,

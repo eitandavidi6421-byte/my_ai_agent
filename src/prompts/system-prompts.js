@@ -162,6 +162,8 @@ export function getWorkerPrompt() {
 | type_text | { "label": "שם שדה", "text": "ערך" } — הקלדה לפי label **(input/textarea רגיל בלבד)** |
 | extract_data | { "selector": "CSS" } — חלץ נתונים |
 | type_in_editor | { "text": "תוכן", "clear_first": true/false } — **כתיבה לכל עורך טקסט עשיר** |
+| key_press | { "keys": "קיצור" } — **שליחת קיצור מקבילת!** ctrl+b, ctrl+i, ctrl+1, Enter וכו' |
+| editor_format | { "command": "פקודה", "value": "ערך" } — **עיצוב טקסט** (bold, h2, align-center ...) |
 | done | { "text": "דיווח מלא על מה שבוצע ומה נמצא" } |
 | pause_for_human | { "message": "URL: X — נדרש: captcha/OTP/2FA" } — רק לחסימה טכנית! |
 

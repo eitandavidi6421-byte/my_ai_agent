@@ -275,6 +275,117 @@ chrome.storage.onChanged.addListener((changes, ns) => {
   }
 });
 
+// ── Render Hierarchy Visualization ──
+function renderHierarchy(goalState) {
+  const container = document.createElement("div");
+  container.className = "hierarchy-container";
+  
+  const title = document.createElement("div");
+  title.className = "hierarchy-title";
+  title.innerHTML = `<span>🏢</span> Hierarchical Swarm (CEO: Kai)`;
+  container.appendChild(title);
+  
+  const tree = document.createElement("div");
+  tree.className = "hierarchy-tree";
+  
+  // CEO Node
+  const ceoNode = document.createElement("div");
+  ceoNode.className = "hierarchy-node ceo";
+  ceoNode.innerHTML = `
+    <div class="node-icon">👤</div>
+    <div class="node-info">
+      <span class="node-name">Manager Agent (CEO)</span>
+      <span class="node-status">${goalState.status}</span>
+    </div>
+    <span class="node-badge status-working">Active</span>
+  `;
+  tree.appendChild(ceoNode);
+  
+  // Connector
+  const connector = document.createElement("div");
+  connector.className = "hierarchy-connector";
+  tree.appendChild(connector);
+  
+  // Sub-agent Nodes
+  goalState.subTasks.forEach(task => {
+    const node = document.createElement("div");
+    node.className = "hierarchy-node";
+    const statusClass = `status-${task.status || 'idle'}`;
+    node.innerHTML = `
+      <div class="node-icon">${getAgentIcon(task.agentType)}</div>
+      <div class="node-info">
+        <span class="node-name">${task.agentType} Agent</span>
+        <span class="node-status">${task.description}</span>
+      </div>
+      <span class="node-badge ${statusClass}">${task.status || 'idle'}</span>
+    `;
+    tree.appendChild(node);
+  });
+  
+  container.appendChild(tree);
+  return container;
+}
+
+function getAgentIcon(type) {
+  switch(type) {
+    case 'researcher': return '🔍';
+    case 'writer': return '✏️';
+    case 'analyst': return '📊';
+    case 'automation': return '🤖';
+    default: return '🤖';
+  }
+}
+
+// ── Render Feedback UI ──
+function renderFeedbackUI(agentType, taskId) {
+  const container = document.createElement("div");
+  container.className = "feedback-container";
+  
+  container.innerHTML = `
+    <div class="feedback-prompt">Rate this agent's performance:</div>
+    <div class="rating-stars">
+      <span class="star" data-value="1">★</span>
+      <span class="star" data-value="2">★</span>
+      <span class="star" data-value="3">★</span>
+      <span class="star" data-value="4">★</span>
+      <span class="star" data-value="5">★</span>
+    </div>
+    <textarea class="feedback-input" placeholder="Optional feedback..."></textarea>
+    <button class="feedback-submit">Submit Rating</button>
+  `;
+  
+  const stars = container.querySelectorAll(".star");
+  let selectedRating = 0;
+  
+  stars.forEach(star => {
+    star.addEventListener("click", () => {
+      selectedRating = parseInt(star.dataset.value);
+      stars.forEach(s => {
+        s.classList.toggle("active", parseInt(s.dataset.value) <= selectedRating);
+      });
+    });
+  });
+  
+  container.querySelector(".feedback-submit").addEventListener("click", () => {
+    if (selectedRating === 0) return alert("Please select a rating");
+    const feedback = container.querySelector(".feedback-input").value;
+    
+    chrome.runtime.sendMessage({
+      action: "feedback_rate_agent",
+      agentType,
+      taskId,
+      rating: selectedRating,
+      feedback
+    }, (resp) => {
+      if (resp.success) {
+        container.innerHTML = '<div class="feedback-prompt">✅ Thank you for your feedback!</div>';
+      }
+    });
+  });
+  
+  return container;
+}
+
 // ── Live-update every pill chip + open log panel from storage ──
 function liveUpdatePills(workersMap) {
   // 1. Find or create a live-pills container inside the progress loader

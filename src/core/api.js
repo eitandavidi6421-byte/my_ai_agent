@@ -9,7 +9,8 @@ import { parseJSON } from "../utils/helpers.js";
 /**
  * Default AI model to use
  */
-const DEFAULT_MODEL = "gemini-2.5-flash-preview-04-17";
+import { CONFIG } from "./config.js";
+const DEFAULT_MODEL = CONFIG.DEFAULT_MODEL;
 
 /**
  * Safety settings for Gemini API (permissive for agent operations)
